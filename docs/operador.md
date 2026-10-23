@@ -48,9 +48,13 @@ Sin `ANTHROPIC_API_KEY`, Vex Core arranca en **modo guion**: entiende peticiones
 
 Para conectar la plataforma real: implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP a vuestro backend, pasando el token del usuario; sustituir `MockPlatform` en `server.ts`. Las herramientas no cambian.
 
+## Probar el avatar a mano
+
+La demo tiene un **laboratorio del avatar** en `http://localhost:5174/#estados` (enlace en la cabecera): la secuencia completa de una petición reproducida en bucle (saluda → escucha → piensa → trabaja → espera tu OK → envía → habla → celebra), los 8 estados, las 5 expresiones, los 9 visemas y un control de tamaño para ver el nivel de detalle (cuerpo, busto, cabeza). Sirve para revisar el rig sin pasar por el operador y para comparar capturas tras cambiar el SVG.
+
 ## Comprobado
 
-- Tests: `pnpm test` (operator 16, api 5).
+- Tests: `pnpm test` (operator 16, api 5, dsl 42, web 5, export 1).
 - Navegador (2026-10-23, modo guion): la petición larga produce cinco pasos, la tarjeta de confirmación aparece en `enviar_correo` con el avatar en "espero tu OK"; al aprobar se envía, la lista de correos/expedientes/tareas se refresca y el avatar celebra. Con Marco Rossi seleccionado, "Envíale el presupuesto por correo a este cliente" usa el contexto sin buscar; al rechazar, el correo no sale y Vex explica que se ha detenido.
 
 ## Seguridad que ya está y la que falta

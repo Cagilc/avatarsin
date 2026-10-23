@@ -95,6 +95,7 @@ export function App() {
         <div className="brand">
           <span className="logo">MNEE</span>
           <span className="muted">plataforma · demo del operador Vex</span>
+          <a className="pill" href="#estados">laboratorio del avatar</a>
         </div>
         <div className="top-right">
           {apiError && <span className="error">{apiError}</span>}
