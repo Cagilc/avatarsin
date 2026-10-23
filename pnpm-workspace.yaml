@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+  - workers/*
+
+# Windows Application Control on this machine blocks native .node addons and unsigned .exe
+# (rollup, esbuild, rolldown…). Use their WebAssembly builds instead.
+# That's also why we're on Vite 6: Vite 8's wasm Rolldown can't resolve Windows paths.
+overrides:
+  rollup: npm:@rollup/wasm-node@^4.65.0
+  esbuild: npm:esbuild-wasm@^0.25.12

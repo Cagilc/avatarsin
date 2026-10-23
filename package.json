@@ -1,0 +1,16 @@
+{
+  "name": "avataarsin",
+  "private": true,
+  "description": "Vex: an animated avatar that operates a business platform (agent loop, typed tools, permissions, audit) and the hosts that embed it.",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @vex/api dev",
+    "dev:demo": "pnpm --filter @vex/operator-demo dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

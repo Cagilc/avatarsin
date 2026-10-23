@@ -1,0 +1,25 @@
+{
+  "name": "@vex/operator",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Vex operator core: action/tool contracts, permission policy, avatar events and the provider-agnostic agent loop.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}

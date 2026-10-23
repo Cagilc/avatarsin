@@ -1,0 +1,27 @@
+/* Joint groups rotate around their pivot; the inline style sets the angle. */
+.vex-joint {
+  transition: transform 0.3s ease;
+}
+
+/* greeting: the right elbow waves on top of the pose angle. */
+.vex-wave {
+  animation: vex-wave 0.3s ease-in-out 6 alternate;
+}
+
+@keyframes vex-wave {
+  from {
+    transform: rotate(-20deg);
+  }
+  to {
+    transform: rotate(-55deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vex-joint {
+    transition: none;
+  }
+  .vex-wave {
+    animation: none;
+  }
+}

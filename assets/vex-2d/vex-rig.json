@@ -1,0 +1,401 @@
+{
+  "name": "Vex",
+  "canvas": {
+    "width": 400,
+    "height": 500,
+    "units": "px"
+  },
+  "palette": {
+    "body": "#F4F8FD",
+    "shade": "#D3DFEE",
+    "outline": "#B9C8DC",
+    "joint": "#2E7BFF",
+    "light": "#5CE1FF",
+    "visor": "#0A1230",
+    "hands": "#3B4250",
+    "accent": "#E25CFF",
+    "background": "#0B1636"
+  },
+  "hierarchy": [
+    {
+      "id": "vx-root",
+      "pivot": [
+        200,
+        300
+      ],
+      "children": [
+        {
+          "id": "vx-hover",
+          "children": [
+            {
+              "id": "vx-thruster",
+              "pivot": [
+                200,
+                384
+              ],
+              "children": [
+                {
+                  "id": "vx-flame",
+                  "pivot": [
+                    200,
+                    408
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "vx-torso",
+              "pivot": [
+                200,
+                384
+              ],
+              "children": [
+                {
+                  "id": "vx-core",
+                  "pivot": [
+                    200,
+                    318
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "vx-arm-L",
+              "pivot": [
+                146,
+                290
+              ],
+              "children": [
+                {
+                  "id": "vx-elbow-L",
+                  "pivot": [
+                    146,
+                    346
+                  ],
+                  "children": [
+                    {
+                      "id": "vx-hand-L",
+                      "pivot": [
+                        146,
+                        394
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "vx-arm-R",
+              "pivot": [
+                254,
+                290
+              ],
+              "children": [
+                {
+                  "id": "vx-elbow-R",
+                  "pivot": [
+                    254,
+                    346
+                  ],
+                  "children": [
+                    {
+                      "id": "vx-hand-R",
+                      "pivot": [
+                        254,
+                        394
+                      ],
+                      "children": [
+                        {
+                          "id": "vx-pen"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "vx-head",
+              "pivot": [
+                200,
+                262
+              ],
+              "children": [
+                {
+                  "id": "vx-fin-L",
+                  "pivot": [
+                    104,
+                    118
+                  ]
+                },
+                {
+                  "id": "vx-fin-R",
+                  "pivot": [
+                    296,
+                    118
+                  ]
+                },
+                {
+                  "id": "vx-ear-L"
+                },
+                {
+                  "id": "vx-ear-R"
+                },
+                {
+                  "id": "vx-helmet"
+                },
+                {
+                  "id": "vx-visor"
+                },
+                {
+                  "id": "vx-face",
+                  "children": [
+                    {
+                      "id": "vx-eyes-*",
+                      "pivot": [
+                        200,
+                        150
+                      ],
+                      "variants": [
+                        "neutral",
+                        "happy",
+                        "thinking",
+                        "wow",
+                        "success"
+                      ]
+                    },
+                    {
+                      "id": "vx-mouth-*",
+                      "pivot": [
+                        200,
+                        190
+                      ],
+                      "variants": [
+                        "neutral",
+                        "happy",
+                        "thinking",
+                        "wow",
+                        "success"
+                      ]
+                    },
+                    {
+                      "id": "vx-vis-*",
+                      "variants": [
+                        "X",
+                        "A",
+                        "B",
+                        "C",
+                        "D",
+                        "E",
+                        "F",
+                        "G",
+                        "H"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "visemes": {
+    "X": "reposo",
+    "A": "m b p",
+    "B": "s t d n k ch",
+    "C": "e i",
+    "D": "a",
+    "E": "o",
+    "F": "u",
+    "G": "f",
+    "H": "l r"
+  },
+  "poses_deg": {
+    "idle": {
+      "armL": 12,
+      "elbowL": -8,
+      "armR": -12,
+      "elbowR": 8,
+      "head": 0,
+      "finL": 0,
+      "finR": 0
+    },
+    "listening": {
+      "armL": 10,
+      "elbowL": -6,
+      "armR": -10,
+      "elbowR": 6,
+      "head": -6,
+      "finL": 10,
+      "finR": -10
+    },
+    "thinking": {
+      "armL": 12,
+      "elbowL": -8,
+      "armR": -20,
+      "elbowR": -150,
+      "head": 8,
+      "finL": -6,
+      "finR": 6
+    },
+    "talking": {
+      "armL": 18,
+      "elbowL": -22,
+      "armR": -16,
+      "elbowR": 20,
+      "head": -3,
+      "finL": 0,
+      "finR": 0
+    },
+    "working": {
+      "armL": 20,
+      "elbowL": -100,
+      "armR": -20,
+      "elbowR": 100,
+      "head": 4,
+      "finL": 0,
+      "finR": 0,
+      "show": [
+        "vx-fx-tablet"
+      ]
+    },
+    "greeting": {
+      "armL": 12,
+      "elbowL": -8,
+      "armR": -125,
+      "elbowR": -20,
+      "head": -5,
+      "finL": 4,
+      "finR": -4,
+      "loop": {
+        "elbowR": [
+          -20,
+          -55
+        ],
+        "period_ms": 600,
+        "repeats": 3
+      }
+    },
+    "creative": {
+      "armL": 14,
+      "elbowL": -10,
+      "armR": -100,
+      "elbowR": -30,
+      "head": -4,
+      "finL": 0,
+      "finR": 0,
+      "show": [
+        "vx-pen",
+        "vx-fx-curve"
+      ]
+    },
+    "success": {
+      "armL": 120,
+      "elbowL": 15,
+      "armR": -120,
+      "elbowR": -15,
+      "head": 0,
+      "finL": 8,
+      "finR": -8,
+      "hold_ms": 600,
+      "then": "idle"
+    }
+  },
+  "state_faces": {
+    "idle": "neutral",
+    "listening": "neutral",
+    "thinking": "thinking",
+    "talking": "happy+visemes",
+    "working": "neutral",
+    "greeting": "happy",
+    "creative": "happy",
+    "success": "success"
+  },
+  "loops": {
+    "hover": {
+      "translateY": [
+        0,
+        -6
+      ],
+      "period_s": 2.4,
+      "easing": "sine"
+    },
+    "blink": {
+      "every_s": 4,
+      "duration_ms": 120
+    },
+    "fins": {
+      "deg": 5,
+      "period_s": 3,
+      "phase": "opposite"
+    },
+    "core": {
+      "opacity": [
+        1,
+        0.55
+      ],
+      "period_s": 1.8
+    },
+    "flame": {
+      "scale": [
+        [
+          1,
+          1
+        ],
+        [
+          0.94,
+          1.22
+        ],
+        [
+          1.04,
+          0.9
+        ]
+      ],
+      "period_s": 0.36
+    }
+  },
+  "transitions": {
+    "pose_ms": 300,
+    "return_to_idle_ms": 400,
+    "face": "instant",
+    "viseme_ms": [
+      80,
+      120
+    ]
+  },
+  "lod": {
+    "full": {
+      "viewBox": [
+        0,
+        0,
+        400,
+        500
+      ],
+      "min_px": 160
+    },
+    "bust": {
+      "viewBox": [
+        60,
+        0,
+        280,
+        330
+      ],
+      "px": [
+        64,
+        160
+      ]
+    },
+    "head": {
+      "viewBox": [
+        64,
+        8,
+        272,
+        272
+      ],
+      "max_px": 64
+    }
+  },
+  "rotation_convention": "grados, positivo = horario (SVG), alrededor del pivote de cada grupo"
+}
