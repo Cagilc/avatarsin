@@ -124,6 +124,16 @@ describe('Vex Core HTTP', () => {
     expect((events.at(-1) as { reply: string }).reply).toContain('Me he detenido');
   });
 
+  it('proxies a neutral completion request to the provider', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provider/complete',
+      payload: { system: '', messages: [{ role: 'user', content: [{ type: 'text', text: 'Busca a Laura' }] }], tools: [{ name: 'buscar', description: '', inputSchema: {} }] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ stopReason: 'tool_use', content: [{ type: 'tool_use', name: 'buscar' }] });
+  });
+
   it('exposes the audit filtered by user and the operator info', async () => {
     const info = await app.inject({ method: 'GET', url: '/operator/info' });
     expect(info.json()).toMatchObject({ provider: 'scripted', tools: expect.arrayContaining([expect.objectContaining({ name: 'enviar_correo', risk: 'irreversible' })]) });

@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { DEFAULT_POLICY, runOperator, type AnyTool, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
+import { DEFAULT_POLICY, runOperator, type AnyTool, type ChatMessage, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { AuditLog } from './audit.ts';
 import { DEMO_USERS, bearer, issueDemoToken, verifyToken } from './auth.ts';
 import type { PlatformClient } from './platform/types.ts';
@@ -35,6 +35,13 @@ const confirmBody = z.object({
 });
 
 const demoLoginBody = z.object({ userId: z.string().min(1) });
+
+/** A neutral completion request from a host that runs the loop itself (Vex Studio). */
+const completeBody = z.object({
+  system: z.string(),
+  messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.array(z.record(z.string(), z.unknown())) })),
+  tools: z.array(z.object({ name: z.string(), description: z.string(), inputSchema: z.record(z.string(), z.unknown()) })),
+});
 
 function principalOf(req: FastifyRequest, reply: FastifyReply): Principal | null {
   const principal = verifyToken(bearer(req.headers.authorization));
@@ -82,6 +89,17 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       opts.platform.equipos(),
     ]);
     return { contactos, expedientes, tareas, correos, equipos };
+  });
+
+  // --- Model proxy for hosts that run the loop locally (the key never leaves this server). ---
+  app.post('/provider/complete', async (req, reply) => {
+    const body = completeBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Petición inválida.' });
+    try {
+      return await opts.provider.complete({ system: body.data.system, messages: body.data.messages as ChatMessage[], tools: body.data.tools });
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // --- Operator ---
