@@ -31,7 +31,7 @@ export default defineConfig({
     {
       command: 'pnpm --dir ../apps/api start',
       url: 'http://127.0.0.1:8787/health',
-      env: { VEX_DB: 'memory', VEX_PROVIDER: 'scripted', PORT: '8787', VEX_RATE_LIMIT: '200' },
+      env: { VEX_DB: 'memory', VEX_PROVIDER: 'scripted', PORT: '8787', VEX_RATE_LIMIT: '200', VEX_DEMO_LOGIN: '1', CORS_ORIGIN: 'http://localhost:5174,http://127.0.0.1:5174' },
       reuseExistingServer: !CI,
       timeout: 60_000,
     },

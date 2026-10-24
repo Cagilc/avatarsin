@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScriptedProvider, type CompletionRequest, type ModelProvider, type OperatorEvent } from '@vex/operator';
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppOptions } from './app.ts';
+import { TokenService } from './auth.ts';
 import { MockPlatform } from './platform/mock.ts';
 import { trimHistory } from './sessions.ts';
 import { MemoryStore, SqliteStore } from './storage.ts';
@@ -38,7 +39,7 @@ describe('Vex Core HTTP', () => {
     if (app) await app.close();
     store = new MemoryStore();
     platform = new MockPlatform(() => new Date('2026-10-23T10:00:00.000Z'));
-    app = buildApp({ provider: new ScriptedProvider(), platform, store, confirmTimeoutMs: 5000, ...extra });
+    app = buildApp({ provider: new ScriptedProvider(), platform, store, confirmTimeoutMs: 5000, demoLogin: true, ...extra });
     await app.ready();
     const login = await app.inject({ method: 'POST', url: '/platform/auth/demo', payload: { userId: 'u-cesar' } });
     token = (login.json() as { token: string }).token;
@@ -164,7 +165,8 @@ describe('persistence with SQLite', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vex-db-'));
     const file = join(dir, 'vex.db');
     try {
-      const first = buildApp({ provider: new ScriptedProvider(), platform: new MockPlatform(), store: new SqliteStore(file) });
+      const tokens = new TokenService('un-secreto-fijo-para-que-los-tokens-sobrevivan');
+      const first = buildApp({ provider: new ScriptedProvider(), platform: new MockPlatform(), store: new SqliteStore(file), demoLogin: true, tokens });
       await first.ready();
       const login = await first.inject({ method: 'POST', url: '/platform/auth/demo', payload: { userId: 'u-cesar' } });
       const token = (login.json() as { token: string }).token;
@@ -173,7 +175,7 @@ describe('persistence with SQLite', () => {
       await first.close();
 
       const spy = new Spy();
-      const second = buildApp({ provider: spy, platform: new MockPlatform(), store: new SqliteStore(file) });
+      const second = buildApp({ provider: spy, platform: new MockPlatform(), store: new SqliteStore(file), demoLogin: true, tokens });
       await second.ready();
       const audit = await second.inject({ method: 'GET', url: '/operator/audit?sessionId=s-persist', headers: auth });
       expect(audit.json()).toEqual([expect.objectContaining({ tool: 'buscar', outcome: 'ok', sessionId: 's-persist' })]);

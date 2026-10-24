@@ -3,7 +3,8 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
 import { riskSchema, runOperator, type AnyTool, type ChatMessage, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
-import { DEMO_USERS, bearer, issueDemoToken, verifyToken } from './auth.ts';
+import { DEMO_USERS, TokenService, bearer } from './auth.ts';
+import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
@@ -20,7 +21,15 @@ export interface AppOptions {
   policy?: PermissionPolicy;
   personality?: VexPersonality;
   hostName?: string;
-  corsOrigin?: string | boolean;
+  /**
+   * Pages allowed to call Vex Core from a browser, as exact origins (scheme://host:port).
+   * Any other origin gets no CORS headers and a 403 on state-changing requests. Empty = browsers blocked.
+   */
+  allowedOrigins?: string[];
+  /** Verifies and issues session tokens. Default: a random secret that dies with the process. */
+  tokens?: TokenService;
+  /** Enables POST /platform/auth/demo (unauthenticated login as a demo user). Local development only. */
+  demoLogin?: boolean;
   /** How long a confirmation may stay unanswered before it counts as rejected. */
   confirmTimeoutMs?: number;
   /** Messages per user (and proxy calls per IP) per window: protects the model bill. */
@@ -36,8 +45,10 @@ export interface AppOptions {
   connectors?: {
     /** Where the secrets named by each connector's auth live. Default: process.env. */
     env?: Record<string, string | undefined>;
-    /** Commands that may be started as local MCP servers. Default: none. */
+    /** Local MCP servers that may be started, as exact command lines. Default: none. */
     mcpAllow?: string[];
+    /** Which URLs an administrator may import from. Default: https only, no private networks. */
+    urlPolicy?: UrlPolicy;
     fetch?: typeof fetch;
   };
   logger?: boolean;
@@ -91,11 +102,7 @@ const completeBody = z.object({
 
 const DEFAULT_RATE_LIMIT = { messages: 20, windowMs: 60_000 };
 
-function principalOf(req: FastifyRequest, reply: FastifyReply): Principal | null {
-  const principal = verifyToken(bearer(req.headers.authorization));
-  if (!principal) void reply.code(401).send({ error: 'Token ausente o inválido.' });
-  return principal;
-}
+const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** Vex Core as a Fastify app. `buildApp` is what tests use; `server.ts` listens. */
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -109,6 +116,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     store,
     env: opts.connectors?.env ?? process.env,
     mcpAllow: opts.connectors?.mcpAllow ?? [],
+    checkUrl: (url) => checkOutboundUrl(url, urlPolicy),
     ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}),
   });
   /** Recomputed per message: a review takes effect on the next request, not mid-run. */
@@ -119,8 +127,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const limits = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
   const limiter = new RateLimiter(limits.messages, limits.windowMs);
   const providerProxy = opts.enableProviderProxy ?? false;
+  const tokens = opts.tokens ?? TokenService.ephemeral();
+  const allowedOrigins = opts.allowedOrigins ?? [];
+  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
 
-  void app.register(cors, { origin: opts.corsOrigin ?? true });
+  const principalOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
+    const principal = tokens.verify(bearer(req.headers.authorization));
+    if (!principal) void reply.code(401).send({ error: 'Token ausente o inválido.' });
+    return principal;
+  };
+
+  // Browsers only from the listed pages; CORS never reflects an arbitrary origin.
+  void app.register(cors, { origin: allowedOrigins, exposedHeaders: ['x-vex-session'] });
+  app.addHook('onRequest', async (req, reply) => {
+    if (STATE_CHANGING.has(req.method) && !originAllowed(req.headers.origin, allowedOrigins)) {
+      await reply.code(403).send({ error: 'Origen no permitido.' });
+    }
+  });
   app.addHook('onClose', async () => {
     await registry.close();
     store.close();
@@ -137,13 +160,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   }));
 
   // --- Demo platform (mock). Replace with the real backend's endpoints/token. ---
-  app.get('/platform/auth/demo-users', async () => DEMO_USERS);
-  app.post('/platform/auth/demo', async (req, reply) => {
-    const body = demoLoginBody.safeParse(req.body);
-    const user = body.success ? DEMO_USERS.find((u) => u.id === body.data.userId) : undefined;
-    if (!user) return reply.code(400).send({ error: 'Usuario de demo desconocido.' });
-    return { token: issueDemoToken(user), principal: user };
-  });
+  if (opts.demoLogin) {
+    app.get('/platform/auth/demo-users', async () => DEMO_USERS);
+    app.post('/platform/auth/demo', async (req, reply) => {
+      const body = demoLoginBody.safeParse(req.body);
+      const user = body.success ? DEMO_USERS.find((u) => u.id === body.data.userId) : undefined;
+      if (!user) return reply.code(400).send({ error: 'Usuario de demo desconocido.' });
+      return { token: tokens.issue(user), principal: user };
+    });
+  }
   app.get('/platform/estado', async (req, reply) => {
     if (!principalOf(req, reply)) return undefined;
     const [contactos, expedientes, tareas, correos, equipos] = await Promise.all([
@@ -194,7 +219,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       'cache-control': 'no-cache',
       connection: 'keep-alive',
       'x-vex-session': session.id,
-      'access-control-allow-origin': typeof opts.corsOrigin === 'string' ? opts.corsOrigin : (req.headers.origin ?? '*'),
+      // Raw response: the CORS plugin cannot add its headers, so set them for the allowed page only.
+      ...(req.headers.origin && allowedOrigins.includes(req.headers.origin) ? { 'access-control-allow-origin': req.headers.origin, vary: 'Origin' } : {}),
       'access-control-expose-headers': 'x-vex-session',
     });
     // If the page goes away mid-run, stop: nobody is there to confirm or read the answer.
