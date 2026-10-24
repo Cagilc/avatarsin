@@ -79,6 +79,13 @@ export function platformTools(platform: PlatformClient): AnyTool[] {
     risk: 'irreversible',
     input: z.object({ borradorId: z.string().min(1).describe('Id del borrador devuelto por redactar_correo.') }),
     summarize: (i) => `Enviar el correo ${i.borradorId}`,
+    // The card shows the draft as stored, not what the model says it contains.
+    preview: async (i, ctx) => {
+      const draft = await platform.obtenerBorrador(i.borradorId);
+      if (!draft) throw new Error(`No existe el borrador ${i.borradorId}.`);
+      if (draft.creadoPor !== ctx.principal.id) throw new Error('Solo quien redactó el borrador puede enviarlo.');
+      return { para: draft.para, asunto: draft.asunto, cuerpo: draft.cuerpo };
+    },
     execute: (i, ctx) => platform.enviarCorreo(i.borradorId, { id: ctx.principal.id, name: ctx.principal.name }),
   });
 

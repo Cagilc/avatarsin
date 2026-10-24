@@ -57,6 +57,8 @@ export interface PlatformClient {
   crearTarea(input: { titulo: string; equipo: string; expedienteId: string | null }, actor: Actor): Promise<Tarea>;
   redactarCorreo(input: { para: string; proposito: string; expedienteId: string | null }, actor: Actor): Promise<BorradorCorreo>;
   enviarCorreo(borradorId: string, actor: Actor): Promise<CorreoEnviado>;
+  /** A draft as it would be sent; null when it does not exist. Used for the confirmation card. */
+  obtenerBorrador(borradorId: string): Promise<BorradorCorreo | null>;
   /** Read models for the demo screen. */
   contactos(): Promise<Contacto[]>;
   expedientes(): Promise<Expediente[]>;

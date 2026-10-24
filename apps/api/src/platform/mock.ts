@@ -31,6 +31,17 @@ export class MockPlatform implements PlatformClient {
     this.tareasById.set(t1.id, t1);
   }
 
+  /** Seeding for tests and evals; not part of PlatformClient. */
+  agregarContacto(contacto: Contacto): void {
+    this.contactosById.set(contacto.id, contacto);
+  }
+
+  /** Seeding for tests and evals; not part of PlatformClient. */
+  editarContacto(id: string, patch: Partial<Omit<Contacto, 'id'>>): void {
+    const c = this.contactosById.get(id);
+    if (c) this.contactosById.set(id, { ...c, ...patch });
+  }
+
   private nextId(prefix: string): string {
     this.seq += 1;
     return `${prefix}-${this.seq}`;
@@ -96,6 +107,10 @@ export class MockPlatform implements PlatformClient {
     const sent: CorreoEnviado = { ...b, enviadoEn: this.now().toISOString() };
     this.enviados.push(sent);
     return sent;
+  }
+
+  async obtenerBorrador(borradorId: string) {
+    return this.borradores.get(borradorId) ?? null;
   }
 
   async contactos() {
