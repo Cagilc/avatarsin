@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      claude_eval:
+        description: 'Run the eval bank against Claude (uses the ANTHROPIC_API_KEY secret and costs money)'
+        type: boolean
+        default: false
+      min_pass:
+        description: 'Minimum pass rate for the Claude eval (0 to 1)'
+        default: '0.8'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, tests, scripted eval and browser e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and API tests
+        run: pnpm test
+
+      - name: Eval bank (scripted gate)
+        run: pnpm eval -- --provider scripted
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @vex/e2e exec playwright install --with-deps chromium
+
+      - name: End-to-end tests in a real browser
+        run: pnpm e2e
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14
+          if-no-files-found: ignore
+
+  claude-eval:
+    name: Eval bank with Claude
+    if: github.event_name == 'workflow_dispatch' && inputs.claude_eval
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run the bank against Claude
+        run: pnpm eval -- --provider anthropic --min-pass ${{ inputs.min_pass }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-claude
+          path: apps/api/evals/reports
+          retention-days: 30

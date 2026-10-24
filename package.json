@@ -11,6 +11,8 @@
     "dev:demo": "pnpm --filter @vex/operator-demo dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "e2e": "pnpm --filter @vex/e2e e2e",
+    "eval": "pnpm --filter @vex/api eval"
   }
 }

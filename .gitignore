@@ -15,3 +15,7 @@ Thumbs.db
 
 # Keep the template; real .env files stay ignored
 !.env.example
+
+# Playwright
+e2e/test-results/
+e2e/playwright-report/
