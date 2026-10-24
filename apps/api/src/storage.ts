@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import type { ConnectorManifest } from '@vex/connectors';
 import type { AuditEntry, ChatMessage, Principal } from '@vex/operator';
 
 export interface StoredSession {
@@ -16,14 +17,18 @@ export interface AuditQuery {
 }
 
 /**
- * Where Vex Core keeps what must survive a restart: the audit trail and the conversations.
- * Pending confirmations are not stored: after a restart they count as rejected.
+ * Where Vex Core keeps what must survive a restart: the audit trail, the conversations and the
+ * connectors with their human reviews. Pending confirmations are not stored: after a restart they
+ * count as rejected.
  */
 export interface OperatorStore {
   recordAudit(entry: AuditEntry): void;
   audit(query: AuditQuery): AuditEntry[];
   loadSession(id: string): StoredSession | null;
   saveSession(session: StoredSession): void;
+  listConnectors(): ConnectorManifest[];
+  saveConnector(manifest: ConnectorManifest): void;
+  deleteConnector(id: string): void;
   close(): void;
 }
 
@@ -52,6 +57,20 @@ export class MemoryStore implements OperatorStore {
     this.sessions.set(session.id, structuredClone(session));
   }
 
+  private readonly connectors = new Map<string, ConnectorManifest>();
+
+  listConnectors(): ConnectorManifest[] {
+    return [...this.connectors.values()].map((m) => structuredClone(m));
+  }
+
+  saveConnector(manifest: ConnectorManifest): void {
+    this.connectors.set(manifest.id, structuredClone(manifest));
+  }
+
+  deleteConnector(id: string): void {
+    this.connectors.delete(id);
+  }
+
   close(): void {}
 }
 
@@ -66,6 +85,9 @@ export class SqliteStore implements OperatorStore {
   private readonly auditByPrincipal: StatementSync;
   private readonly selectSession: StatementSync;
   private readonly upsertSession: StatementSync;
+  private readonly selectConnectors: StatementSync;
+  private readonly upsertConnector: StatementSync;
+  private readonly removeConnector: StatementSync;
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -89,6 +111,11 @@ export class SqliteStore implements OperatorStore {
         history text not null,
         updated_at text not null
       );
+      create table if not exists connectors (
+        id text primary key,
+        manifest text not null,
+        updated_at text not null
+      );
     `);
     this.insertAudit = this.db.prepare('insert into audit (ts, session_id, principal_id, tool, outcome, entry) values (?, ?, ?, ?, ?, ?)');
     this.auditBySession = this.db.prepare('select entry from audit where principal_id = ? and session_id = ? order by id desc limit ?');
@@ -98,6 +125,11 @@ export class SqliteStore implements OperatorStore {
       'insert into sessions (id, principal_id, principal, history, updated_at) values (?, ?, ?, ?, ?) ' +
         'on conflict (id) do update set history = excluded.history, updated_at = excluded.updated_at',
     );
+    this.selectConnectors = this.db.prepare('select manifest from connectors order by id');
+    this.upsertConnector = this.db.prepare(
+      'insert into connectors (id, manifest, updated_at) values (?, ?, ?) on conflict (id) do update set manifest = excluded.manifest, updated_at = excluded.updated_at',
+    );
+    this.removeConnector = this.db.prepare('delete from connectors where id = ?');
   }
 
   recordAudit(entry: AuditEntry): void {
@@ -118,6 +150,18 @@ export class SqliteStore implements OperatorStore {
 
   saveSession(session: StoredSession): void {
     this.upsertSession.run(session.id, session.principal.id, JSON.stringify(session.principal), JSON.stringify(session.history), new Date().toISOString());
+  }
+
+  listConnectors(): ConnectorManifest[] {
+    return (this.selectConnectors.all() as Array<{ manifest: string }>).map((r) => JSON.parse(r.manifest) as ConnectorManifest);
+  }
+
+  saveConnector(manifest: ConnectorManifest): void {
+    this.upsertConnector.run(manifest.id, JSON.stringify(manifest), manifest.updatedAt);
+  }
+
+  deleteConnector(id: string): void {
+    this.removeConnector.run(id);
   }
 
   close(): void {

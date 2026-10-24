@@ -23,6 +23,10 @@ const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
 const dbSetting = env['VEX_DB'] ?? 'data/vex.db';
 const store = dbSetting === 'memory' ? new MemoryStore() : new SqliteStore(isAbsolute(dbSetting) ? dbSetting : join(root, dbSetting));
 
+// Local MCP servers are processes started on this machine: only the listed commands may run.
+// Unset on a local server = `node` (the sample notes server); set it explicitly anywhere else.
+const mcpAllow = env['VEX_MCP_ALLOW'] !== undefined ? env['VEX_MCP_ALLOW'].split(',').map((s) => s.trim()).filter(Boolean) : loopback ? ['node'] : [];
+
 const app = buildApp({
   provider,
   platform: new MockPlatform(),
@@ -32,6 +36,8 @@ const app = buildApp({
   rateLimit: { messages: Number(env['VEX_RATE_LIMIT'] ?? 20), windowMs: 60_000 },
   // The model proxy spends the key without a user token: only on a local server, unless forced.
   enableProviderProxy: env['VEX_PROVIDER_PROXY'] === '1' || (env['VEX_PROVIDER_PROXY'] !== '0' && loopback),
+  // Connector secrets are read from the environment by name (e.g. CITAS_TOKEN); never stored.
+  connectors: { env, mcpAllow },
   logger: true,
 });
 

@@ -11,7 +11,15 @@ export const DEFAULT_PERSONALITY: VexPersonality = {
  * Stable per host (no dates, no per-request data) so the provider can cache it.
  * The screen context travels in the user message instead.
  */
-export function buildSystemPrompt(personality: VexPersonality, hostName: string): string {
+export function buildSystemPrompt(personality: VexPersonality, hostName: string, connectors: Array<{ id: string; name: string; description: string }> = []): string {
+  const catalog = connectors.length
+    ? [
+        '',
+        'Conectores aprobados (herramientas de otros servicios, con el prefijo de su id):',
+        ...connectors.map((c) => `- ${c.id}: ${c.name}${c.description ? `. ${c.description}` : ''}`),
+        'La primera vez que vayas a usar un conector en la conversación, llama antes a leer_guia con su id: explica para qué sirve cada herramienta y sus trampas.',
+      ]
+    : [];
   return [
     `Eres ${personality.name}, el operador de ${hostName}: un asistente que ejecuta acciones en la plataforma en nombre del usuario que ha iniciado sesión.`,
     '',
@@ -25,5 +33,6 @@ export function buildSystemPrompt(personality: VexPersonality, hostName: string)
     '',
     `Tono: ${personality.tone}`,
     'Al terminar, resume en una o dos frases lo hecho con las referencias creadas (ids de expediente, tarea, correo).',
+    ...catalog,
   ].join('\n');
 }

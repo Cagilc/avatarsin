@@ -14,12 +14,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.2.0",
     "@fastify/cors": "^11.3.1",
+    "@vex/connectors": "workspace:*",
     "@vex/operator": "workspace:*",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@vex/sample-tools": "workspace:*",
     "typescript": "^7.0.2",
     "vitest": "^3.2.7"
   }
