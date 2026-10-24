@@ -600,3 +600,177 @@ a.pill {
   background: rgba(0, 0, 0, 0.25);
   font: 11px/1.4 var(--font-mono);
 }
+
+/* Connectors (#conectores) */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.conn-import,
+.conn-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface-1);
+}
+
+.conn-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.conn-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.conn-fields label,
+.conn-guide {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.conn-fields .wide {
+  grid-column: 1 / -1;
+}
+
+.conn input:not([type='checkbox']),
+.conn textarea,
+.conn select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.conn-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.conn-head h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.conn-head p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.conn-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pill-on {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.conn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.conn-table th {
+  text-align: left;
+  color: var(--text-3);
+  font-weight: 500;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conn-table td {
+  vertical-align: top;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conn-table td > span,
+.conn-table td > strong {
+  display: block;
+}
+
+.conn-desc {
+  margin-top: 2px;
+  color: var(--text-2);
+  max-width: 460px;
+}
+
+.conn-binding,
+.conn-reason,
+.conn-review {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.conn-review.is-pending {
+  color: var(--warning);
+}
+
+.conn-why {
+  display: block;
+  margin-top: 6px;
+  width: 100%;
+  border-color: var(--warning) !important;
+}
+
+.risk {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.risk-read {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.risk-write {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.risk-irreversible {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.conn-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.conn-notice {
+  margin: 0;
+  color: var(--success);
+}
+
+@media (max-width: 760px) {
+  .conn-fields {
+    grid-template-columns: 1fr;
+  }
+  .conn-head {
+    flex-direction: column;
+  }
+}

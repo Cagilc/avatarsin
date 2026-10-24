@@ -25,7 +25,17 @@ const OUTCOME_LABEL: Record<Step['outcome'], string> = {
 };
 
 /** Field names of a confirmation preview, as the card shows them. */
-const DETAIL_LABEL: Record<string, string> = { para: 'Para', asunto: 'Asunto', cuerpo: 'Mensaje' };
+const DETAIL_LABEL: Record<string, string> = {
+  para: 'Para',
+  asunto: 'Asunto',
+  cuerpo: 'Mensaje',
+  // Connectors: the exact request (OpenAPI) or call (MCP) that will leave Vex.
+  servicio: 'Servicio',
+  metodo: 'Método',
+  url: 'URL',
+  herramienta: 'Herramienta',
+  argumentos: 'Datos',
+};
 
 export function App() {
   const [users, setUsers] = useState<Principal[]>([]);
@@ -100,6 +110,7 @@ export function App() {
           <span className="logo">MNEE</span>
           <span className="muted">plataforma · demo del operador Vex</span>
           <a className="pill" href="#estados">laboratorio del avatar</a>
+          <a className="pill" href="#conectores">conectores</a>
         </div>
         <div className="top-right">
           {apiError && <span className="error">{apiError}</span>}
