@@ -7,8 +7,11 @@ import { z } from 'zod';
 export const riskSchema = z.enum(['read', 'write', 'irreversible']);
 export type Risk = z.infer<typeof riskSchema>;
 
-/** Which "hands" execute the action. Fidelity order for the router: platform > studio > dom > files > windows. */
-export const driverSchema = z.enum(['platform', 'studio', 'dom', 'files', 'windows']);
+/**
+ * Which "hands" execute the action. Fidelity order for the router: platform > api > mcp > studio >
+ * dom > files > windows. `api` and `mcp` are connectors imported from OpenAPI or MCP and approved by a person.
+ */
+export const driverSchema = z.enum(['platform', 'api', 'mcp', 'studio', 'dom', 'files', 'windows']);
 export type Driver = z.infer<typeof driverSchema>;
 
 export const toolNameSchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/, 'snake_case tool name');

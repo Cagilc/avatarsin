@@ -22,6 +22,8 @@ export interface ToolDefinition<I, O = unknown> {
   driver: Driver;
   risk: Risk;
   input: z.ZodType<I>;
+  /** The schema the model sees, when the tool already has one (imported tools). Defaults to `input` as JSON Schema. */
+  jsonSchema?: Record<string, unknown>;
   /** One sentence for confirmation cards and the audit log: "Enviar correo a … con asunto …". */
   summarize: (input: I) => string;
   /**
@@ -50,6 +52,6 @@ export function toToolSpec(tool: AnyTool): ToolSpec {
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: z.toJSONSchema(tool.input) as Record<string, unknown>,
+    inputSchema: tool.jsonSchema ?? (z.toJSONSchema(tool.input) as Record<string, unknown>),
   };
 }

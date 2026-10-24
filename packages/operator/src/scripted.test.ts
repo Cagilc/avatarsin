@@ -42,3 +42,31 @@ describe('ScriptedProvider', () => {
     expect((out.content[0] as { text: string }).text).toMatch(/Puedo buscar/);
   });
 });
+
+describe('direct calls ("usa <herramienta> {json}")', () => {
+  const tools = [{ name: 'citas_listar_huecos', description: '', inputSchema: {} }];
+
+  it('parses the tool and its JSON arguments', async () => {
+    const { directCall } = await import('./providers/scripted.ts');
+    expect(directCall('usa citas_listar_huecos {"fecha":"2026-10-27"}')).toEqual({ name: 'citas_listar_huecos', args: { fecha: '2026-10-27' } });
+    expect(directCall('ejecuta notas_listar_notas')).toEqual({ name: 'notas_listar_notas', args: {} });
+    expect(directCall('usa x_y {roto')).toMatchObject({ error: expect.stringContaining('JSON') });
+    expect(directCall('Busca a Laura')).toBeNull();
+  });
+
+  it('calls the tool once and reports its result', async () => {
+    const provider = new ScriptedProvider();
+    const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'text', text: 'usa citas_listar_huecos {"fecha":"2026-10-27"}' }] }];
+    const first = await provider.complete({ system: '', messages, tools });
+    expect(first.content[0]).toMatchObject({ type: 'tool_use', name: 'citas_listar_huecos', input: { fecha: '2026-10-27' } });
+    messages.push({ role: 'assistant', content: first.content });
+    messages.push({ role: 'user', content: [{ type: 'tool_result', toolUseId: (first.content[0] as { id: string }).id, content: '{"huecos":["10:00"]}' }] });
+    const second = await provider.complete({ system: '', messages, tools });
+    expect((second.content[0] as { text: string }).text).toBe('Hecho (citas_listar_huecos): {"huecos":["10:00"]}');
+  });
+
+  it('says so when the tool does not exist', async () => {
+    const out = await new ScriptedProvider().complete({ system: '', messages: [{ role: 'user', content: [{ type: 'text', text: 'usa nada_de_nada {}' }] }], tools });
+    expect((out.content[0] as { text: string }).text).toMatch(/No tengo ninguna herramienta llamada nada_de_nada/);
+  });
+});

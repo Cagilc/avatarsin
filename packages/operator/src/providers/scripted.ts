@@ -86,6 +86,23 @@ function nameAfter(text: string, keys: RegExp): string | null {
   return candidate.length > 1 ? candidate : null;
 }
 
+// The JSON part is captured up to the end even if malformed, so a typo gets an explanation.
+const DIRECT_RE = /^\s*(?:usa|ejecuta|llama a)\s+([a-z][a-z0-9_]*)(?:\s+con)?\s*(\{[\s\S]*)?\s*$/i;
+
+/** Parses "usa <tool> {json}". Null when the text is not a direct call. */
+export function directCall(text: string): { name: string; args: Record<string, unknown> } | { error: string } | null {
+  const m = DIRECT_RE.exec(text);
+  if (!m?.[1]) return null;
+  if (!m[2]) return { name: m[1], args: {} };
+  try {
+    const args = JSON.parse(m[2]) as unknown;
+    if (typeof args !== 'object' || args === null || Array.isArray(args)) return { error: 'Los parámetros tienen que ser un objeto JSON, p. ej. {"fecha":"2026-10-27"}.' };
+    return { name: m[1], args: args as Record<string, unknown> };
+  } catch {
+    return { error: 'Los parámetros no son JSON válido. Ejemplo: usa citas_listar_huecos {"fecha":"2026-10-27"}' };
+  }
+}
+
 const MAIL_RE = /\b(correo|email|mail|escr[ií]bele|m[aá]ndale|env[ií]ale)\b/;
 // `\b` treats accented letters as non-word characters, so "Envía un…" would match " a ";
 // a Unicode letter lookbehind keeps "a" and "para" whole words.
@@ -214,6 +231,21 @@ export class ScriptedProvider implements ModelProvider {
       req.onTextDelta?.(reply);
       return { content: [{ type: 'text', text: reply }], stopReason: 'end_turn' };
     };
+
+    // "usa <herramienta> {json}": a direct call, for tools the keyword planner knows nothing about
+    // (imported connectors). It still goes through validation, policy, confirmation and audit.
+    const direct = directCall(text);
+    if (direct) {
+      if ('error' in direct) return say(direct.error);
+      if (!available.has(direct.name)) return say(`No tengo ninguna herramienta llamada ${direct.name}. Las que puedo usar ahora: ${[...available].join(', ')}.`);
+      if (!calls.includes(direct.name) && !lastError) {
+        return { content: [{ type: 'tool_use', id: `call_${calls.length + 1}_${direct.name}`, name: direct.name, input: direct.args }], stopReason: 'tool_use' };
+      }
+      if (lastError) return say(`No se pudo ejecutar ${direct.name}: ${lastError}`);
+      const out = results[direct.name];
+      const shown = typeof out === 'string' ? out : JSON.stringify(out);
+      return say(`Hecho (${direct.name}): ${shown.length > 600 ? `${shown.slice(0, 600)}…` : shown}`);
+    }
 
     const question = missingInfo(text, context);
     if (plan.length === 0) {
