@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import {
   HttpMcpClient,
   ReviewError,
@@ -37,11 +36,19 @@ export interface RegistryOptions {
   /** Where the secrets named by `auth.env` live. */
   env: Record<string, string | undefined>;
   /**
-   * Commands allowed to be started as local MCP servers. Starting a process is code execution
-   * on this machine, so nothing runs unless it is listed here (exact command, or its file name).
+   * Local MCP servers that may be started, as exact command lines ("command arg1 arg2").
+   * Starting a process is code execution on this machine, so an import must match one entry
+   * exactly, command and arguments; a listed interpreter with other arguments is refused.
    */
   mcpAllow: string[];
+  /** Returns a reason when a URL the server would fetch is not allowed; null when it is. */
+  checkUrl?: (url: string) => string | null;
   fetch?: typeof fetch;
+}
+
+/** Normalises a command line for comparison: slashes, case, whitespace. */
+export function commandKey(command: string, args: readonly string[]): string {
+  return [command, ...args].map((s) => s.trim().replace(/\\/g, '/').toLowerCase()).join(' ');
 }
 
 export interface OpenApiImportRequest {
@@ -104,6 +111,8 @@ export class ConnectorRegistry {
   }
 
   private async fetchSpec(url: string): Promise<unknown> {
+    const reason = this.opts.checkUrl?.(url);
+    if (reason) throw new ConnectorError(400, reason);
     const res = await (this.opts.fetch ?? fetch)(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new ConnectorError(400, `No se pudo descargar la especificación: HTTP ${res.status}.`);
     const text = await res.text();
@@ -136,17 +145,26 @@ export class ConnectorRegistry {
     return this.save(draft);
   }
 
-  private allowed(command: string): boolean {
-    const norm = (s: string) => s.replace(/\\/g, '/').toLowerCase();
-    return this.opts.mcpAllow.some((a) => norm(a) === norm(command) || norm(a) === norm(basename(command)));
+  private allowed(command: string, args: readonly string[]): boolean {
+    const key = commandKey(command, args);
+    return this.opts.mcpAllow.some((entry) => {
+      const [cmd = '', ...rest] = entry.trim().split(/\s+/);
+      return commandKey(cmd, rest) === key;
+    });
   }
 
   private async openMcp(source: ConnectorManifest['source']): Promise<McpClient> {
     if (source.kind === 'mcp-stdio') {
-      if (!this.allowed(source.command)) throw new ConnectorError(403, `El comando "${source.command}" no está en VEX_MCP_ALLOW; un administrador del servidor tiene que permitirlo.`);
+      if (!this.allowed(source.command, source.args)) {
+        throw new ConnectorError(403, `Esa línea de comando no está en VEX_MCP_ALLOW (comando y argumentos exactos); un administrador del servidor tiene que permitirla.`);
+      }
       return StdioMcpClient.start(source.command === 'node' ? process.execPath : source.command, source.args);
     }
-    if (source.kind === 'mcp-http') return HttpMcpClient.connect(source.url);
+    if (source.kind === 'mcp-http') {
+      const reason = this.opts.checkUrl?.(source.url);
+      if (reason) throw new ConnectorError(400, reason);
+      return HttpMcpClient.connect(source.url);
+    }
     throw new ConnectorError(400, 'Este conector no es MCP.');
   }
 

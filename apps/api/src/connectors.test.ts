@@ -51,7 +51,14 @@ describe('connectors in Vex Core', () => {
 
   async function start(extra: Partial<AppOptions> = {}, store: OperatorStore = new MemoryStore()) {
     spy = new Spy();
-    app = buildApp({ provider: spy, platform: new MockPlatform(), store, connectors: { env: { CITAS_TOKEN: TOKEN }, mcpAllow: ['node'] }, ...extra });
+    app = buildApp({
+      provider: spy,
+      platform: new MockPlatform(),
+      store,
+      demoLogin: true,
+      connectors: { env: { CITAS_TOKEN: TOKEN }, mcpAllow: [`node ${NOTAS_MCP_SCRIPT}`], urlPolicy: { allowHttp: true, allowInternal: true } },
+      ...extra,
+    });
     await app.ready();
     const login = async (userId: string) => ({ authorization: `Bearer ${((await app.inject({ method: 'POST', url: '/platform/auth/demo', payload: { userId } })).json() as { token: string }).token}` });
     admin = await login('u-cesar');
@@ -152,13 +159,16 @@ describe('connectors in Vex Core', () => {
   });
 
   it('connects a local MCP server only if its command is allowed', async () => {
-    await start({ connectors: { env: {}, mcpAllow: [] } });
+    await start({ connectors: { env: {}, mcpAllow: [], urlPolicy: { allowHttp: true, allowInternal: true } } });
     const denied = await app.inject({ method: 'POST', url: '/connectors/import/mcp', headers: admin, payload: { id: 'notas', transport: 'stdio', command: 'node', args: [NOTAS_MCP_SCRIPT] } });
     expect(denied.statusCode).toBe(403);
     expect(denied.json()).toMatchObject({ error: expect.stringContaining('VEX_MCP_ALLOW') });
     await app.close();
 
     await start();
+    // The interpreter is listed only with the notes script: any other arguments are refused.
+    const other = await app.inject({ method: 'POST', url: '/connectors/import/mcp', headers: admin, payload: { id: 'otro', transport: 'stdio', command: 'node', args: ['-e', 'process.exit(0)'] } });
+    expect(other.statusCode).toBe(403);
     const res = await app.inject({ method: 'POST', url: '/connectors/import/mcp', headers: admin, payload: { id: 'notas', transport: 'stdio', command: 'node', args: [NOTAS_MCP_SCRIPT] } });
     expect(res.statusCode).toBe(201);
     const m = res.json() as ConnectorManifest;
@@ -186,7 +196,7 @@ describe('connectors in Vex Core', () => {
   it.skipIf(!existsSync(VECTORCRAFT))('drives the real VectorCraft (MCP) through Vex Core: draw, write and export after approval', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vex-vc-')).replace(/\\/g, '/');
     try {
-      await start({ connectors: { env: {}, mcpAllow: [VECTORCRAFT] } });
+      await start({ connectors: { env: {}, mcpAllow: [`${VECTORCRAFT} mcp --headless --automation-read-root ${dir} --automation-write-root ${dir}`], urlPolicy: { allowHttp: true, allowInternal: true } } });
       const imported = await app.inject({
         method: 'POST',
         url: '/connectors/import/mcp',
