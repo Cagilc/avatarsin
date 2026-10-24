@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.ts",
     "start": "node src/server.ts",
     "test": "vitest run",
+    "eval": "node evals/run.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
