@@ -30,10 +30,12 @@ export const actionRequestSchema = z.object({
   params: z.record(z.string(), z.unknown()),
   /** One human sentence: what will happen if this runs ("Enviar correo a laura@… con asunto …"). */
   summary: z.string().min(1),
+  /** What will really happen, read from the system of record (recipient, subject…). Filled for confirmations. */
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;
 
-export const actionOutcomeSchema = z.enum(['ok', 'error', 'denied', 'rejected', 'invalid']);
+export const actionOutcomeSchema = z.enum(['ok', 'error', 'denied', 'rejected', 'invalid', 'cancelled']);
 export type ActionOutcome = z.infer<typeof actionOutcomeSchema>;
 
 export const actionResultSchema = z.object({

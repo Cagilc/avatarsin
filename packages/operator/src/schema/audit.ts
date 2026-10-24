@@ -12,6 +12,8 @@ export const auditEntrySchema = z.object({
   risk: riskSchema,
   params: z.record(z.string(), z.unknown()),
   summary: z.string(),
+  /** What the user actually approved (recipient, subject…), when the action asked for confirmation. */
+  details: z.record(z.string(), z.unknown()).optional(),
   outcome: actionOutcomeSchema,
   error: z.string().optional(),
   durationMs: z.number().nonnegative(),

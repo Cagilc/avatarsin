@@ -20,4 +20,4 @@ export { vexPersonalitySchema, vexThemeSchema, type VexPersonality, type VexThem
 export { defineTool, toToolSpec, type AnyTool, type ToolContext, type ToolDefinition, type ToolSpec } from './tool.ts';
 export type { ChatMessage, Completion, CompletionRequest, ContentBlock, ModelProvider, StopReason } from './provider.ts';
 export { RUNNER_DEFAULTS, runOperator, type RunOptions, type RunResult } from './runner.ts';
-export { ScriptedProvider, planFor } from './providers/scripted.ts';
+export { ScriptedProvider, missingInfo, planFor } from './providers/scripted.ts';

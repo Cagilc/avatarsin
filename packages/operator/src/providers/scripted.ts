@@ -81,9 +81,30 @@ function nameAfter(text: string, keys: RegExp): string | null {
   const m = text.match(keys);
   if (!m) return null;
   const rest = text.slice((m.index ?? 0) + m[0].length);
-  const stop = rest.search(/[,.;]| y | e | para | con | sobre | del | de la | en | crea| abre| asigna| m[aá]nda| env[ií]a|$/);
+  const stop = rest.search(/[,.;?!]| y | e | para | con | sobre | del | de la | en | que | un | una | crea| abre| asigna| m[aá]nda| env[ií]a|$/);
   const candidate = rest.slice(0, stop < 0 ? undefined : stop).trim();
   return candidate.length > 1 ? candidate : null;
+}
+
+const MAIL_RE = /\b(correo|email|mail|escr[ií]bele|m[aá]ndale|env[ií]ale)\b/;
+// `\b` treats accented letters as non-word characters, so "Envía un…" would match " a ";
+// a Unicode letter lookbehind keeps "a" and "para" whole words.
+const CONTACT_KEYS = /(?<!\p{L})(?:busca|buscar|encuentra|localiza|qui[eé]n es|a|para)\s+(?:a\s+)?/iu;
+
+function contactNameIn(text: string): string | null {
+  return quoted(text) ?? nameAfter(text, CONTACT_KEYS);
+}
+
+/**
+ * A question to ask instead of acting, when the request lacks something the plan cannot guess.
+ * Today: an email with no recipient (no name in the request and no contact open on screen).
+ */
+export function missingInfo(text: string, context: Record<string, unknown>): string | null {
+  const t = text.toLowerCase();
+  if (MAIL_RE.test(t) && !context['contactoEmail'] && !context['contactoId'] && !contactNameIn(text)) {
+    return '¿A quién se lo envío? Dime su nombre o abre su ficha y vuelve a pedírmelo.';
+  }
+  return null;
 }
 
 function teamIn(text: string): string {
@@ -110,12 +131,12 @@ export function planFor(text: string, context: Record<string, unknown>): Planned
   const wantsSearch = /\b(busca|buscar|encuentra|localiza|qui[eé]n es)\b/.test(t);
   const wantsFile = /expediente/.test(t) && /\b(crea|crear|abre|abrir|nuevo|nueva|inicia)\b/.test(t);
   const wantsTask = /\b(tarea|asigna|asignar|p[aá]salo|p[aá]saselo|encarga)\b/.test(t);
-  const wantsMail = /\b(correo|email|mail|escr[ií]bele|m[aá]ndale|env[ií]ale)\b/.test(t);
+  const wantsMail = MAIL_RE.test(t) && missingInfo(text, context) === null;
   const contextContact = context['contactoId'] as string | undefined;
   const tramite = /residencia|arraigo|nacionalidad|visado/.exec(t)?.[0] ?? null;
   const asunto = /documentaci[oó]n/.test(t) ? 'documentación' : /presupuesto/.test(t) ? 'presupuesto' : null;
 
-  const contactName = quoted(text) ?? nameAfter(text, /\b(?:busca|buscar|encuentra|localiza|a|para)\s+(?:a\s+)?/i);
+  const contactName = contactNameIn(text);
   if (wantsSearch || ((wantsFile || wantsMail) && !contextContact && contactName)) {
     plan.push({ name: 'buscar', input: () => ({ consulta: contactName ?? text.slice(0, 60), tipo: 'contactos' }) });
   }
@@ -189,10 +210,20 @@ export class ScriptedProvider implements ModelProvider {
     const { calls, results, lastError } = exchange(req.messages);
     const available = new Set(req.tools.map((t) => t.name));
 
-    if (plan.length === 0) {
-      const reply = 'Puedo buscar contactos, abrir expedientes, crear tareas para un equipo y redactar o enviar correos. Dime qué necesitas.';
+    const say = (reply: string): Completion => {
       req.onTextDelta?.(reply);
       return { content: [{ type: 'text', text: reply }], stopReason: 'end_turn' };
+    };
+
+    const question = missingInfo(text, context);
+    if (plan.length === 0) {
+      return say(question ?? 'Puedo buscar contactos, abrir expedientes, crear tareas para un equipo y redactar o enviar correos. Dime qué necesitas.');
+    }
+    // The person was not found: do not open records or write emails for nobody.
+    const found = pick<unknown[]>(results['buscar'], ['resultados']);
+    if (calls.includes('buscar') && found !== undefined && found.length === 0 && plan.some((p) => p.name !== 'buscar')) {
+      const consulta = pick<string>(req.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_use' && b.name === 'buscar'), ['input', 'consulta']);
+      return say(`No encuentro a "${consulta ?? 'esa persona'}" en la plataforma, así que no he hecho nada más. ¿Me das su nombre completo o su email?`);
     }
     const next = plan.find((p) => !calls.includes(p.name));
     if (next && !lastError && available.has(next.name)) {

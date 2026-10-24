@@ -38,5 +38,7 @@ export const operatorEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('confirm'), action: actionRequestSchema }),
   z.object({ type: z.literal('done'), reply: z.string(), turns: z.number().int().nonnegative() }),
   z.object({ type: z.literal('error'), message: z.string() }),
+  /** The user stopped the run; every pending action was closed as cancelled. */
+  z.object({ type: z.literal('cancelled') }),
 ]);
 export type OperatorEvent = z.infer<typeof operatorEventSchema>;

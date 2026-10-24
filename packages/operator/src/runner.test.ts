@@ -160,3 +160,114 @@ describe('runOperator', () => {
     expect(h.events.at(-1)).toMatchObject({ type: 'error' });
   });
 });
+
+describe('runOperator · stop, caps and previews', () => {
+  const never = <T,>() => new Promise<T>(() => {});
+
+  it('stops while the model is thinking, even if the provider ignores the signal', async () => {
+    const controller = new AbortController();
+    const hanging: ModelProvider = { name: 'hang', complete: () => never<Completion>() };
+    const h = harness([], { provider: hanging, signal: controller.signal });
+    const run = runOperator(h.opts);
+    await Promise.resolve();
+    controller.abort();
+    const result = await run;
+    expect(result.cancelled).toBe(true);
+    expect(h.events.slice(-2)).toEqual([{ type: 'phase', phase: 'idle' }, { type: 'cancelled' }]);
+    expect(h.audit).toHaveLength(0);
+  });
+
+  it('stops at a pending confirmation and closes every tool_use so the history stays valid', async () => {
+    calls.length = 0;
+    const controller = new AbortController();
+    const both: Completion = {
+      content: [
+        { type: 'tool_use', id: 'u1', name: 'enviar_correo', input: { para: 'laura@ejemplo.es' } },
+        { type: 'tool_use', id: 'u2', name: 'buscar', input: { consulta: 'Laura' } },
+      ],
+      stopReason: 'tool_use',
+    };
+    const h = harness([both], { signal: controller.signal, confirm: () => never<boolean>() });
+    const run = runOperator(h.opts);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(h.events.some((e) => e.type === 'confirm')).toBe(true);
+    controller.abort();
+    const result = await run;
+    expect(result.cancelled).toBe(true);
+    expect(calls).toEqual([]);
+    expect(h.audit.map((a) => `${a.tool}:${a.outcome}`)).toEqual(['enviar_correo:cancelled', 'buscar:cancelled']);
+    const last = h.history.at(-1)!;
+    expect(last.role).toBe('user');
+    expect(last.content.map((b) => (b.type === 'tool_result' ? `${b.toolUseId}:${b.isError}` : b.type))).toEqual(['u1:true', 'u2:true']);
+  });
+
+  it('does not start when already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const h = harness([text('nunca')], { signal: controller.signal });
+    const result = await runOperator(h.opts);
+    expect(result).toEqual({ reply: '', turns: 0, cancelled: true });
+    expect(h.provider.requests).toHaveLength(0);
+  });
+
+  it('denies tool calls beyond the cap', async () => {
+    calls.length = 0;
+    const many: Completion = {
+      content: ['a', 'b', 'c'].map((q, i) => ({ type: 'tool_use' as const, id: `m${i}`, name: 'buscar', input: { consulta: q } })),
+      stopReason: 'tool_use',
+    };
+    const h = harness([many, text('Fin.')], { maxToolCalls: 2 });
+    await runOperator(h.opts);
+    expect(calls).toEqual(['buscar:a', 'buscar:b']);
+    expect(h.audit.map((a) => a.outcome)).toEqual(['ok', 'ok', 'denied']);
+    expect(h.audit[2]?.error).toMatch(/Límite de 2 acciones/);
+  });
+
+  it('shows the real details on the confirmation card and keeps them in the audit', async () => {
+    calls.length = 0;
+    const seen: unknown[] = [];
+    const conPreview = defineTool({
+      ...enviar,
+      name: 'enviar_borrador',
+      input: z.object({ borradorId: z.string() }),
+      summarize: (i: { borradorId: string }) => `Enviar el borrador ${i.borradorId}`,
+      preview: async (i: { borradorId: string }) => ({ para: 'laura@ejemplo.es', asunto: `Asunto de ${i.borradorId}` }),
+      execute: async () => ({ enviado: true }),
+    });
+    const h = harness([use('enviar_borrador', { borradorId: 'B-1' }), text('Enviado.')], {
+      tools: [conPreview],
+      confirm: async (action) => {
+        seen.push(action.details);
+        return true;
+      },
+    });
+    await runOperator(h.opts);
+    expect(seen).toEqual([{ para: 'laura@ejemplo.es', asunto: 'Asunto de B-1' }]);
+    expect(h.events.find((e) => e.type === 'confirm')).toMatchObject({ action: { details: { para: 'laura@ejemplo.es' } } });
+    expect(h.audit[0]).toMatchObject({ outcome: 'ok', details: { asunto: 'Asunto de B-1' } });
+  });
+
+  it('does not ask for confirmation when the preview cannot be read', async () => {
+    const roto = defineTool({
+      ...enviar,
+      name: 'enviar_borrador',
+      input: z.object({ borradorId: z.string() }),
+      summarize: () => 'Enviar',
+      preview: async () => {
+        throw new Error('No existe el borrador B-9.');
+      },
+      execute: async () => ({ enviado: true }),
+    });
+    let asked = false;
+    const h = harness([use('enviar_borrador', { borradorId: 'B-9' }), text('No pude.')], {
+      tools: [roto],
+      confirm: async () => {
+        asked = true;
+        return true;
+      },
+    });
+    await runOperator(h.opts);
+    expect(asked).toBe(false);
+    expect(h.audit[0]).toMatchObject({ outcome: 'error', error: 'No se puede preparar la confirmación: No existe el borrador B-9.' });
+  });
+});

@@ -7,6 +7,8 @@ export interface ToolContext {
   principal: Principal;
   /** What the host says the user is looking at (open record, screen…). Free-form, host-defined. */
   context: Record<string, unknown>;
+  /** Fires when the user stops the run; long tools should honour it. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -22,6 +24,11 @@ export interface ToolDefinition<I, O = unknown> {
   input: z.ZodType<I>;
   /** One sentence for confirmation cards and the audit log: "Enviar correo a … con asunto …". */
   summarize: (input: I) => string;
+  /**
+   * Read-only look at what the action will really do, shown on the confirmation card and kept in
+   * the audit. Throwing means the action cannot run and the user is not asked.
+   */
+  preview?: (input: I, ctx: ToolContext) => Promise<Record<string, unknown>>;
   execute: (input: I, ctx: ToolContext) => Promise<O>;
 }
 
