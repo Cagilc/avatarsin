@@ -23,11 +23,15 @@ Un avatar animado (Vex) que ejecuta acciones en una plataforma de negocio (MNEE:
 - Para control de Windows (Hito 4) solo valen componentes firmados: Node, PowerShell, .NET UI Automation, WebView2. Nada de addons `.node` ni Tauri.
 
 ## Convenciones
-- Tests: Vitest; `pnpm test` y `pnpm typecheck` en la raíz antes de cada commit.
+- Antes de cada commit: `pnpm typecheck`, `pnpm test` (incluye la puerta del banco de encargos) y, si se toca la demo o el avatar, `pnpm e2e`.
 - Commits en inglés, conventional commits.
 - Antes de cambiar un contrato de `packages/operator`, actualizar el esquema Zod y sus tests.
+- Toda herramienta nueva entra con casos en `apps/api/evals/cases.ts`, incluido al menos uno negativo. Si cambia lo que hace una herramienta irreversible, darle `preview` para que la tarjeta enseñe lo real.
+- Playwright en este equipo: siempre con el Edge instalado (`channel: 'msedge'`, ya es el valor por defecto en local); el Chromium descargado no arranca por la directiva.
+- Persistencia con `node:sqlite` (integrado en Node 24), nunca `better-sqlite3` ni otros addons nativos.
 
 ## Siguiente
+- Ejecutar el banco con Claude (`pnpm eval -- --provider anthropic`) y fijar el acierto mínimo con datos.
 - Conectar el backend real: implementar `PlatformClient` y `verifyToken`.
+- Tramo 2: conectores desde OpenAPI y MCP con el riesgo aprobado por una persona; guía por herramienta.
 - Hito 2: núcleo del avatar sin React + web component; tema/skin en caliente.
-- Hito 3: extensión de navegador (driver DOM) y cliente MCP; suite de inyección de prompts.

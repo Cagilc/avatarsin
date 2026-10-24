@@ -14,6 +14,8 @@ apps/
   operator-demo/    Página que hace de plataforma anfitriona (React + Vite): listas,
                     contexto de pantalla, chat con pasos, tarjeta de confirmación y el
                     avatar dirigido por eventos reales.
+  api/evals/        Banco de encargos: casos, ejecutor e informes.
+e2e/                Pruebas en navegador real con Playwright.
 packages/
   operator/         Contratos (Zod) y el bucle del operador, sin SDK de ningún proveedor.
   vex/              El avatar 2D: rig SVG por capas con 8 estados, 5 expresiones,
@@ -41,9 +43,13 @@ Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador dete
 Comprobaciones:
 
 ```bash
-pnpm test        # operator 16 · api 5
 pnpm typecheck
+pnpm test                            # contratos, bucle, API y puerta del banco de encargos
+pnpm eval -- --provider scripted     # banco de 24 encargos (15 en modo guion)
+pnpm e2e                             # 7 pruebas en navegador real (en Windows usa Edge)
 ```
+
+Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
 
 ## Cómo se integra en una plataforma real
 
