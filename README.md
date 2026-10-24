@@ -2,7 +2,7 @@
 
 Vex es un avatar animado que **ejecuta acciones** en una plataforma de negocio en nombre del usuario que ha iniciado sesión: busca contactos, abre expedientes, crea tareas para un equipo, redacta y envía correos. Encadena los pasos, pide confirmación para lo irreversible y deja registro de todo. El avatar refleja en qué fase está (pensando, trabajando, esperando tu OK, hablando).
 
-Este repositorio contiene el prototipo funcional (Hitos 0 y 1 de la hoja de ruta) y los assets del avatar.
+Este repositorio contiene el prototipo funcional y los assets del avatar. Hecho hasta ahora: el operador con sus contratos y Vex Core (Hitos 0 y 1 de la hoja de ruta), la puesta a punto (parada, confirmaciones con el contenido real, persistencia, banco de encargos, pruebas en navegador e integración continua), los conectores para aprender herramientas nuevas con aprobación humana, y el endurecimiento de seguridad descrito en `docs/seguridad.md`. Pendiente: conectar el backend real y medir con Claude.
 
 ## Estructura
 
@@ -44,6 +44,8 @@ pnpm dev:api     # Vex Core en http://127.0.0.1:8787
 pnpm dev:demo    # demo en http://localhost:5174
 ```
 
+En local no hace falta configurar nada más: el login de demo y el proxy del modelo se activan solos cuando el servidor escucha en `127.0.0.1`. Para un servidor público, copia `apps/api/.env.example` a `apps/api/.env` y rellena al menos `CORS_ORIGIN` (las páginas que pueden llamar a Vex) y `VEX_TOKEN_SECRET`; `docs/seguridad.md` lista el resto.
+
 Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador determinista por palabras clave que ejecuta peticiones como "Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación", pero no conversa. Para usar Claude, copia `apps/api/.env.example` a `apps/api/.env` y pon la clave; el modelo por defecto es `claude-opus-5-5`.
 
 Comprobaciones:
@@ -63,7 +65,7 @@ Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco.
 
 1. **Presencia:** la página monta el avatar y el panel de chat (hoy, el componente React de `apps/operator-demo`; el objetivo del Hito 2 es un web component de una sola etiqueta).
 2. **Manos:** implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP al backend, pasando el token del usuario, y sustituir `MockPlatform` en `apps/api/src/server.ts`. Las herramientas no cambian.
-3. **Identidad:** `verifyToken` en `apps/api/src/auth.ts` verifica el JWT de la plataforma y lo convierte en el principal. El operador nunca tiene más poder que esa persona.
+3. **Identidad:** `TokenService` en `apps/api/src/auth.ts` firma y verifica los tokens de sesión; el punto de cambio es su método `verify`, que debe validar el JWT de la plataforma y convertirlo en el principal. El operador nunca tiene más poder que esa persona.
 4. **Contexto:** la página envía con cada mensaje qué hay en pantalla (`contactoId`, `expedienteId`, `pantalla`).
 
 ## Principios

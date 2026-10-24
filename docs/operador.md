@@ -1,4 +1,4 @@
-# Vex operador · prototipo (Hitos 0 y 1)
+# Vex operador · prototipo (Hitos 0 y 1, tramos 1 y 2)
 
 Vex como **operador** de una plataforma de negocio: recibe una petición en lenguaje natural, encadena acciones reales (buscar, abrir expediente, crear tarea, redactar y enviar correo) con los permisos del usuario que ha iniciado sesión, pide confirmación para lo irreversible y deja registro de todo. El avatar refleja en qué fase está. Contexto y decisión de arquitectura en `docs/vex-agente-viabilidad.md`.
 
@@ -6,8 +6,8 @@ Vex como **operador** de una plataforma de negocio: recibe una petición en leng
 
 | Paquete | Qué es |
 |---|---|
-| `packages/operator` (`@vex/operator`) | **Hito 0.** Contratos con Zod (acciones y riesgo, política de permisos, eventos del operador, auditoría, tema y personalidad), la interfaz de proveedor de modelo y el **bucle del agente** (`runOperator`). Sin dependencias de vendedor. Incluye `ScriptedProvider`, un planificador determinista por palabras clave para demos y tests sin clave. 16 tests. |
-| `apps/api` (`@vex/api`) | **Hito 1.** Vex Core: servicio Fastify con el bucle, el driver de plataforma (seis herramientas), tokens, confirmaciones, auditoría JSONL y el adaptador de Claude (SDK oficial, streaming, caché del system prompt). Trae una **plataforma simulada** en memoria (`src/platform/mock.ts`) con contactos, expedientes, tareas y correos. 5 tests de extremo a extremo por HTTP. |
+| `packages/operator` (`@vex/operator`) | **Hito 0.** Contratos con Zod (acciones y riesgo, política de permisos, eventos del operador, auditoría, tema y personalidad), la interfaz de proveedor de modelo y el **bucle del agente** (`runOperator`). Sin dependencias de vendedor. Incluye `ScriptedProvider`, un planificador determinista por palabras clave para demos y tests sin clave. 25 tests. |
+| `apps/api` (`@vex/api`) | **Hito 1.** Vex Core: servicio Fastify con el bucle, el driver de plataforma (seis herramientas), tokens firmados, confirmaciones con vista previa, parada, auditoría y conversaciones en SQLite, el registro de conectores y el adaptador de Claude (SDK oficial, streaming, caché del system prompt). Trae una **plataforma simulada** en memoria (`src/platform/mock.ts`) con contactos, expedientes, tareas y correos. 49 tests por HTTP, con la puerta del banco de encargos y los de seguridad. |
 | `apps/operator-demo` | Página que hace de plataforma anfitriona: listas de contactos/expedientes/tareas/correos, selección como contexto de pantalla, panel de chat con pasos, tarjeta de confirmación y el avatar `@vex/avatar` dirigido por los eventos reales (`src/director.ts`). |
 
 ## Arrancar
@@ -29,10 +29,10 @@ Sin `ANTHROPIC_API_KEY`, Vex Core arranca en **modo guion**: entiende peticiones
 
 ## Contratos (Hito 0)
 
-- **Acción** (`schema/action.ts`): `tool`, `driver` (`platform` · `studio` · `dom` · `files` · `windows`), `risk` (`read` · `write` · `irreversible`), `params` validados, `summary` en una frase humana.
+- **Acción** (`schema/action.ts`): `tool`, `driver` (`platform` · `api` · `mcp` · `studio` · `dom` · `files` · `windows`), `risk` (`read` · `write` · `irreversible`), `params` validados, `summary` en una frase humana.
 - **Política** (`schema/policy.ts`): `allow` / `deny` por nombre de herramienta, comodín de driver (`platform:*`) o `*`; `confirm` lista los niveles de riesgo que paran el bucle. Por defecto: todo el driver de plataforma, confirmar lo irreversible. `deny` gana a `allow`; lo no permitido se deniega.
-- **Principal** (`schema/action.ts`): quién es el usuario; el operador nunca tiene más poder que él. En la demo, el token es el principal en base64 (`apps/api/src/auth.ts`); el punto de cambio para la plataforma real es `verifyToken`: verificar su JWT y mapear claims → principal.
-- **Auditoría** (`schema/audit.ts`): una línea por acción con usuario, parámetros, resultado y duración. `apps/api/audit/audit.jsonl` (ignorado por git).
+- **Principal** (`schema/action.ts`): quién es el usuario; el operador nunca tiene más poder que él. El token de sesión lo firma el servidor (`TokenService` en `apps/api/src/auth.ts`, HMAC con caducidad); el punto de cambio para la plataforma real es su método `verify`: validar el JWT de la plataforma y mapear claims → principal.
+- **Auditoría** (`schema/audit.ts`): una línea por acción con usuario, parámetros, lo confirmado, resultado y duración. Se guarda en SQLite (`apps/api/data/vex.db`, ignorado por git) y se consulta por usuario en `GET /operator/audit`.
 - **Tema y personalidad** (`schema/theme.ts`): los 9 colores del rig y el comportamiento (nombre, tono, saludo, duración del habla). La personalidad entra en el system prompt; el tema está listo para aplicarse como variables CSS.
 
 ## Herramientas del driver de plataforma
@@ -78,7 +78,7 @@ Cada ejecución deja un JSON y `apps/api/evals/reports/latest-<proveedor>.md` co
 
 ## Pruebas en navegador real
 
-`e2e/` con Playwright: 7 pruebas que abren la demo y comprueban el flujo de cinco pasos con la tarjeta del correo real, el rechazo, **Detener**, el contexto de pantalla, la pregunta cuando falta destinatario y el laboratorio del avatar (8 estados, 5 caras, 9 bocas, nivel de detalle por tamaño). Adjuntan capturas del avatar en cada fase.
+`e2e/` con Playwright: 9 pruebas que abren la demo y comprueban el flujo de cinco pasos con la tarjeta del correo real, el rechazo, **Detener**, el contexto de pantalla, la pregunta cuando falta destinatario el laboratorio del avatar (8 estados, 5 caras, 9 bocas, nivel de detalle por tamaño) y la conexión de una herramienta nueva de principio a fin (importar, revisar riesgos, usarla con confirmación). Adjuntan capturas del avatar en cada fase.
 
 ```bash
 pnpm e2e
@@ -92,7 +92,7 @@ En local usan el **Edge instalado** (binario firmado: la directiva no lo bloquea
 
 ## Comprobado
 
-- Tests: `pnpm test` (operator 25, connectors 16, api 39 con la puerta del banco), `pnpm eval` 15/15 en modo guion, `pnpm e2e` 9/9 en Edge.
+- Tests: `pnpm test` (operator 25, connectors 16, api 49 con la puerta del banco y los de seguridad), `pnpm eval` 15/15 en modo guion (13 casos reservados para Claude), `pnpm e2e` 9/9 en Edge, `pnpm build` de la demo en producción.
 - Navegador (2026-10-24): la tarjeta muestra para, asunto y cuerpo reales; Detener deja el paso de envío como "detenido", no sale ningún correo y vuelve el botón Enviar.
 
 ## Seguridad que ya está y la que falta
