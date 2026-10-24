@@ -1,0 +1,129 @@
+import { z } from 'zod';
+import { defineTool, type AnyTool, type Risk } from '@vex/operator';
+import { validateJson } from './jsonSchema.ts';
+import type { ConnectorManifest, ConnectorTool } from './manifest.ts';
+import { contentToText, type McpClient } from './mcp/client.ts';
+import { liveTools } from './review.ts';
+
+export interface RuntimeDeps {
+  /** Environment holding the secrets named by the manifest's auth. */
+  env: Record<string, string | undefined>;
+  fetch?: typeof fetch;
+  /** Lazily opened MCP connection for an MCP connector. */
+  mcp?: (manifest: ConnectorManifest) => Promise<McpClient>;
+  /** Per-call timeout for HTTP tools. */
+  timeoutMs?: number;
+}
+
+const MAX_RESULT_CHARS = 8000;
+
+function truncate(text: string): string {
+  return text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}\n… (${text.length - MAX_RESULT_CHARS} caracteres más, recortado)` : text;
+}
+
+/** Accepts any object; the real check is the tool's JSON Schema, reported in Spanish. */
+function inputFor(tool: ConnectorTool) {
+  return z.record(z.string(), z.unknown()).superRefine((value, ctx) => {
+    for (const message of validateJson(tool.inputSchema, value)) ctx.addIssue({ code: 'custom', message });
+  });
+}
+
+interface HttpRequestPlan {
+  method: string;
+  url: string;
+  body?: unknown;
+}
+
+function planHttp(manifest: ConnectorManifest, tool: ConnectorTool, input: Record<string, unknown>): HttpRequestPlan {
+  if (tool.binding.kind !== 'http') throw new Error('not http');
+  const b = tool.binding;
+  let path = b.path;
+  for (const p of b.pathParams) {
+    const v = input[p];
+    if (v === undefined || v === null || v === '') throw new Error(`Falta el parámetro de ruta ${p}.`);
+    path = path.replace(`{${p}}`, encodeURIComponent(String(v)));
+  }
+  const url = new URL(manifest.baseUrl!.replace(/\/$/, '') + path);
+  for (const q of b.queryParams) {
+    const v = input[q];
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) for (const item of v) url.searchParams.append(q, String(item));
+    else url.searchParams.set(q, String(v));
+  }
+  return { method: b.method, url: url.toString(), ...(b.body && input['body'] !== undefined ? { body: input['body'] } : {}) };
+}
+
+function authHeaders(manifest: ConnectorManifest, env: RuntimeDeps['env']): Record<string, string> {
+  const a = manifest.auth;
+  if (a.kind === 'none') return {};
+  const secret = env[a.env];
+  if (!secret) throw new Error(`Falta la variable de entorno ${a.env} con la credencial de ${manifest.name}.`);
+  return a.kind === 'bearer' ? { authorization: `Bearer ${secret}` } : { [a.name]: secret };
+}
+
+function httpTool(manifest: ConnectorManifest, tool: ConnectorTool & { risk: Risk }, deps: RuntimeDeps): AnyTool {
+  const doFetch = deps.fetch ?? fetch;
+  return defineTool({
+    name: tool.name,
+    description: `[${manifest.name}] ${tool.description}`,
+    driver: 'api',
+    risk: tool.risk,
+    input: inputFor(tool),
+    jsonSchema: tool.inputSchema,
+    summarize: (input) => {
+      const plan = planHttp(manifest, tool, input);
+      return `${manifest.name}: ${plan.method} ${new URL(plan.url).pathname}`;
+    },
+    // The card shows the exact request that will leave Vex: method, URL and body.
+    preview: async (input) => {
+      const plan = planHttp(manifest, tool, input);
+      return { servicio: manifest.name, metodo: plan.method, url: plan.url, ...(plan.body !== undefined ? { cuerpo: plan.body } : {}) };
+    },
+    execute: async (input, ctx) => {
+      const plan = planHttp(manifest, tool, input);
+      const timeout = AbortSignal.timeout(deps.timeoutMs ?? 15_000);
+      const res = await doFetch(plan.url, {
+        method: plan.method,
+        headers: { accept: 'application/json', ...(plan.body !== undefined ? { 'content-type': 'application/json' } : {}), ...authHeaders(manifest, deps.env) },
+        ...(plan.body !== undefined ? { body: JSON.stringify(plan.body) } : {}),
+        signal: ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout,
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`${manifest.name} respondió ${res.status}: ${text.slice(0, 300)}`);
+      if (!text) return { ok: true, estado: res.status };
+      try {
+        return JSON.parse(truncate(text)) as unknown;
+      } catch {
+        return truncate(text);
+      }
+    },
+  });
+}
+
+function mcpTool(manifest: ConnectorManifest, tool: ConnectorTool & { risk: Risk }, deps: RuntimeDeps): AnyTool {
+  if (tool.binding.kind !== 'mcp') throw new Error('not mcp');
+  const remote = tool.binding.tool;
+  return defineTool({
+    name: tool.name,
+    description: `[${manifest.name}] ${tool.description}`,
+    driver: 'mcp',
+    risk: tool.risk,
+    input: inputFor(tool),
+    jsonSchema: tool.inputSchema,
+    summarize: (input) => `${manifest.name}: ${remote}${Object.keys(input).length ? ` ${JSON.stringify(input).slice(0, 120)}` : ''}`,
+    preview: async (input) => ({ servicio: manifest.name, herramienta: remote, argumentos: input }),
+    execute: async (input, ctx) => {
+      if (!deps.mcp) throw new Error('Este servidor no tiene acceso a MCP.');
+      const client = await deps.mcp(manifest);
+      const result = await client.callTool(remote, input, ctx.signal);
+      const text = contentToText(result, MAX_RESULT_CHARS);
+      if (result.isError) throw new Error(`${manifest.name}: ${text.slice(0, 500)}`);
+      return text;
+    },
+  });
+}
+
+/** The operator tools of a connector: only the reviewed and enabled ones, with the approved risk. */
+export function toolsFromManifest(manifest: ConnectorManifest, deps: RuntimeDeps): AnyTool[] {
+  return liveTools(manifest).map((t) => (t.binding.kind === 'http' ? httpTool(manifest, t, deps) : mcpTool(manifest, t, deps)));
+}

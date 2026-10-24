@@ -1,0 +1,26 @@
+{
+  "name": "@vex/connectors",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Connect a new tool to Vex without writing code: import OpenAPI or MCP, suggest a risk per action, let a person approve it, run it.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vex/operator": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vex/sample-tools": "workspace:*",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}
