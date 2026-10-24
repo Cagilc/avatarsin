@@ -2,7 +2,7 @@
 
 Vex es un avatar animado que **ejecuta acciones** en una plataforma de negocio en nombre del usuario que ha iniciado sesión: busca contactos, abre expedientes, crea tareas para un equipo, redacta y envía correos. Encadena los pasos, pide confirmación para lo irreversible y deja registro de todo. El avatar refleja en qué fase está (pensando, trabajando, esperando tu OK, hablando).
 
-Este repositorio contiene el prototipo funcional (Hitos 0 y 1 de la hoja de ruta) y los assets del avatar.
+Este repositorio contiene el prototipo funcional y los assets del avatar. Hecho hasta ahora: el operador con sus contratos y Vex Core (Hitos 0 y 1 de la hoja de ruta), la puesta a punto (parada, confirmaciones con el contenido real, persistencia, banco de encargos, pruebas en navegador e integración continua), los conectores para aprender herramientas nuevas con aprobación humana, y el endurecimiento de seguridad descrito en `docs/seguridad.md`. Pendiente: conectar el backend real y medir con Claude.
 
 ## Estructura
 
@@ -14,8 +14,14 @@ apps/
   operator-demo/    Página que hace de plataforma anfitriona (React + Vite): listas,
                     contexto de pantalla, chat con pasos, tarjeta de confirmación y el
                     avatar dirigido por eventos reales.
+  api/evals/        Banco de encargos: casos, ejecutor e informes.
+  sample-tools/     Herramientas "de terceros" para probar conectores: una agenda de citas
+                    descrita con OpenAPI y un tablón de notas como servidor MCP.
+e2e/                Pruebas en navegador real con Playwright.
 packages/
   operator/         Contratos (Zod) y el bucle del operador, sin SDK de ningún proveedor.
+  connectors/       Conectores: importar OpenAPI o MCP, riesgo sugerido, revisión humana,
+                    validación de entradas y ejecución. Cliente MCP propio (stdio y HTTP).
   vex/              El avatar 2D: rig SVG por capas con 8 estados, 5 expresiones,
                     9 visemas y niveles de detalle. Solo depende de React.
 assets/
@@ -23,6 +29,8 @@ assets/
   vex-3d/           Modelo GLB con 8 clips de animación, visor Three.js y exportador.
 docs/
   operador.md                 Cómo funciona el prototipo y cómo conectar un backend real.
+  conectores.md               Cómo aprende Vex una herramienta nueva, con aprobación humana.
+  seguridad.md                Modelo de amenazas: qué protege a Vex, cómo se comprueba y qué falta.
   vex-agente-viabilidad.md    Informe de viabilidad y hoja de ruta de 5 hitos.
 ```
 
@@ -36,20 +44,28 @@ pnpm dev:api     # Vex Core en http://127.0.0.1:8787
 pnpm dev:demo    # demo en http://localhost:5174
 ```
 
+En local no hace falta configurar nada más: el login de demo y el proxy del modelo se activan solos cuando el servidor escucha en `127.0.0.1`. Para un servidor público, copia `apps/api/.env.example` a `apps/api/.env` y rellena al menos `CORS_ORIGIN` (las páginas que pueden llamar a Vex) y `VEX_TOKEN_SECRET`; `docs/seguridad.md` lista el resto.
+
 Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador determinista por palabras clave que ejecuta peticiones como "Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación", pero no conversa. Para usar Claude, copia `apps/api/.env.example` a `apps/api/.env` y pon la clave; el modelo por defecto es `claude-opus-5-5`.
 
 Comprobaciones:
 
 ```bash
-pnpm test        # operator 16 · api 5
 pnpm typecheck
+pnpm test                            # contratos, bucle, conectores, API y puerta del banco
+pnpm eval -- --provider scripted     # banco de 28 encargos (15 en modo guion)
+pnpm e2e                             # 9 pruebas en navegador real (en Windows usa Edge)
 ```
+
+**Conectar una herramienta nueva:** arranca la agenda de muestra (`pnpm dev:citas`), abre `http://localhost:5174/#conectores`, pulsa Importar, revisa el riesgo de cada acción, activa lo que quieras y guarda. Desde el chat: `usa citas_listar_huecos {"fecha":"2026-10-27"}`, o en lenguaje natural si hay clave de Claude. Detalle y reglas en `docs/conectores.md`.
+
+Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
 
 ## Cómo se integra en una plataforma real
 
 1. **Presencia:** la página monta el avatar y el panel de chat (hoy, el componente React de `apps/operator-demo`; el objetivo del Hito 2 es un web component de una sola etiqueta).
 2. **Manos:** implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP al backend, pasando el token del usuario, y sustituir `MockPlatform` en `apps/api/src/server.ts`. Las herramientas no cambian.
-3. **Identidad:** `verifyToken` en `apps/api/src/auth.ts` verifica el JWT de la plataforma y lo convierte en el principal. El operador nunca tiene más poder que esa persona.
+3. **Identidad:** `TokenService` en `apps/api/src/auth.ts` firma y verifica los tokens de sesión; el punto de cambio es su método `verify`, que debe validar el JWT de la plataforma y convertirlo en el principal. El operador nunca tiene más poder que esa persona.
 4. **Contexto:** la página envía con cada mensaje qué hay en pantalla (`contactoId`, `expedienteId`, `pantalla`).
 
 ## Principios
