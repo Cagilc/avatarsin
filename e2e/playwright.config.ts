@@ -36,6 +36,13 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
+      // A third-party tool Vex has no code for, described only by its OpenAPI document.
+      command: 'pnpm --dir ../apps/sample-tools citas',
+      url: 'http://127.0.0.1:8790/openapi.json',
+      reuseExistingServer: !CI,
+      timeout: 60_000,
+    },
+    {
       command: 'pnpm --dir ../apps/operator-demo dev',
       url: 'http://localhost:5174',
       reuseExistingServer: !CI,

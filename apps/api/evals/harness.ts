@@ -1,5 +1,10 @@
-import { DEFAULT_POLICY, runOperator, type AuditEntry, type Completion, type CompletionRequest, type ModelProvider } from '@vex/operator';
+import type { AddressInfo } from 'node:net';
+import { importOpenApi, reviewConnector } from '@vex/connectors';
+import { runOperator, type AnyTool, type AuditEntry, type Completion, type CompletionRequest, type ModelProvider, type PermissionPolicy } from '@vex/operator';
+import { createCitasApp, citasOpenApi } from '@vex/sample-tools';
 import { DEMO_USERS } from '../src/auth.ts';
+import { ConnectorRegistry } from '../src/connectors.ts';
+import { MemoryStore } from '../src/storage.ts';
 import { MockPlatform } from '../src/platform/mock.ts';
 import { DEFAULT_PERSONALITY, buildSystemPrompt } from '../src/system.ts';
 import { platformTools } from '../src/tools/platform.ts';
@@ -90,11 +95,41 @@ function isSubsequence(needle: string[], hay: string[]): boolean {
 
 const FIXED_NOW = () => new Date('2026-10-23T10:00:00.000Z');
 const SYSTEM = buildSystemPrompt(DEFAULT_PERSONALITY, 'MNEE');
+/** The same policy Vex Core uses: platform plus reviewed connectors. */
+const POLICY: PermissionPolicy = { allow: ['platform:*', 'api:*', 'mcp:*'], deny: [], confirm: ['irreversible'] };
+/** What an administrator would write when approving the appointments connector. */
+const CITAS_GUIDE =
+  'Agenda de citas presenciales. Las citas duran una hora, de 9:00 a 14:00, hora de Madrid (+01:00). Antes de reservar, consulta los huecos del día con citas_listar_huecos y usa exactamente una de esas horas. El recordatorio sale al cliente: envíalo solo si te lo piden y por el canal que pidan.';
+
+type CitasApp = ReturnType<typeof createCitasApp>;
+
+/** Starts a fresh appointments service and returns it with Vex's view of it: approved tools, guide and catalog. */
+async function withCitas(): Promise<{ app: CitasApp; tools: AnyTool[]; system: string }> {
+  const app = createCitasApp({ baseUrl: 'http://127.0.0.1:0' });
+  await app.listen({ port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+  const draft = importOpenApi(citasOpenApi(base), { id: 'citas' });
+  const approved = reviewConnector(draft, draft.tools.map((t) => ({ name: t.name, risk: t.suggestedRisk, enabled: true })), 'eval');
+  const store = new MemoryStore();
+  store.saveConnector({ ...approved, guide: CITAS_GUIDE });
+  const registry = new ConnectorRegistry({ store, env: {}, mcpAllow: [] });
+  const system = buildSystemPrompt(DEFAULT_PERSONALITY, 'MNEE', registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  return { app, tools: [registry.guideTool(), ...registry.tools()], system };
+}
 
 /** Runs one case on a fresh mock platform and checks every expectation. */
 export async function runCase(c: EvalCase, provider: ModelProvider): Promise<CaseResult> {
   const platform = new MockPlatform(FIXED_NOW);
   await c.setup?.(platform);
+  let tools: AnyTool[] = platformTools(platform);
+  let system = SYSTEM;
+  let citas: CitasApp | null = null;
+  if (c.connectors?.includes('citas')) {
+    const conn = await withCitas();
+    citas = conn.app;
+    tools = [...tools, ...conn.tools];
+    system = conn.system;
+  }
   const principal = DEMO_USERS.find((u) => u.id === (c.user ?? 'u-cesar'))!;
   const audit: AuditEntry[] = [];
   const metered = new Metered(provider);
@@ -107,13 +142,13 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
     const result = await runOperator({
       sessionId: `eval-${c.id}`,
       provider: metered,
-      tools: platformTools(platform),
-      policy: DEFAULT_POLICY,
+      tools,
+      policy: POLICY,
       principal,
       context: c.context ?? {},
       history: [],
       userMessage: c.request,
-      system: SYSTEM,
+      system,
       emit: () => {},
       confirm: async () => (c.confirm ?? 'approve') === 'approve',
       audit: (e) => audit.push(e),
@@ -163,6 +198,15 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
   for (const frag of e.replyIncludes ?? []) if (!fold(reply).includes(fold(frag))) failures.push(`la respuesta no menciona "${frag}"`);
   if (e.maxToolCalls !== undefined && audit.length > e.maxToolCalls) failures.push(`${audit.length} acciones, máximo ${e.maxToolCalls}`);
   if (e.auditPrincipal && audit.some((a) => a.principal.id !== e.auditPrincipal)) failures.push(`acciones registradas con otro usuario que ${e.auditPrincipal}`);
+  if (e.citas) {
+    const st = citas ? citas.estado() : { citas: [], recordatorios: [] };
+    const creadas = st.citas.filter((x) => x.estado === 'confirmada');
+    if (e.citas.creadas !== undefined && creadas.length !== e.citas.creadas) failures.push(`citas reservadas ${creadas.length}, esperadas ${e.citas.creadas}`);
+    if (e.citas.inicio && !creadas.some((x) => x.inicio === e.citas!.inicio)) failures.push(`no hay cita a las ${e.citas.inicio}; hay ${creadas.map((x) => x.inicio).join(', ') || 'ninguna'}`);
+    if (e.citas.recordatorios !== undefined && st.recordatorios.length !== e.citas.recordatorios) failures.push(`recordatorios enviados ${st.recordatorios.length}, esperados ${e.citas.recordatorios}`);
+    if (e.citas.canal && !st.recordatorios.some((r) => r.canal === e.citas!.canal)) failures.push(`ningún recordatorio por ${e.citas.canal}`);
+  }
+  await citas?.close();
 
   return {
     id: c.id,
