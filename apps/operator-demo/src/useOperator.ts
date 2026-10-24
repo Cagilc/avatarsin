@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ActionOutcome, ActionRequest, Phase } from '@vex/operator';
-import { chat, confirm as confirmAction, type StreamEvent } from './api';
+import { chat, confirm as confirmAction, stop as stopRun, type StreamEvent } from './api';
 
 export interface Step {
   id: string;
@@ -16,6 +16,8 @@ export interface Turn {
   reply: string;
   steps: Step[];
   error?: string;
+  /** The user pressed Detener. */
+  cancelled?: boolean;
   done: boolean;
 }
 
@@ -80,6 +82,10 @@ export function useOperator(token: string | null, onDone: () => void) {
           case 'error':
             patchTurn(turnId, (t) => ({ ...t, error: event.message, done: true }));
             break;
+          case 'cancelled':
+            setState((s) => ({ ...s, pending: null }));
+            patchTurn(turnId, (t) => ({ ...t, cancelled: true, done: true }));
+            break;
           case 'progress':
             break;
         }
@@ -89,7 +95,7 @@ export function useOperator(token: string | null, onDone: () => void) {
         await chat(token, { ...(sessionRef.current ? { sessionId: sessionRef.current } : {}), message, context }, onEvent);
         setState((s) => {
           const turn = s.turns.find((t) => t.id === turnId);
-          const allOk = turn !== undefined && !turn.error && turn.steps.length > 0 && turn.steps.every((st) => st.outcome === 'ok');
+          const allOk = turn !== undefined && !turn.error && !turn.cancelled && turn.steps.length > 0 && turn.steps.every((st) => st.outcome === 'ok');
           return { ...s, busy: false, pending: null, phase: allOk ? 'success' : s.phase === 'error' ? 'error' : 'idle' };
         });
         window.setTimeout(() => setState((s) => (s.busy ? s : { ...s, phase: 'idle' })), 1200);
@@ -114,10 +120,18 @@ export function useOperator(token: string | null, onDone: () => void) {
     [token, state.pending],
   );
 
+  /** Detener: the server aborts the run; the stream closes with `cancelled`. */
+  const stop = useCallback(async () => {
+    const sessionId = sessionRef.current;
+    if (!token || !sessionId) return;
+    setState((s) => ({ ...s, pending: null }));
+    await stopRun(token, sessionId);
+  }, [token]);
+
   const reset = useCallback(() => {
     sessionRef.current = null;
     setState({ sessionId: null, phase: 'idle', turns: [], pending: null, busy: false });
   }, []);
 
-  return { ...state, send, decide, reset };
+  return { ...state, send, decide, stop, reset };
 }

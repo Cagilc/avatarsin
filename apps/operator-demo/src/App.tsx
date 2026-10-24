@@ -21,7 +21,11 @@ const OUTCOME_LABEL: Record<Step['outcome'], string> = {
   denied: 'denegado',
   rejected: 'rechazado',
   invalid: 'inválido',
+  cancelled: 'detenido',
 };
+
+/** Field names of a confirmation preview, as the card shows them. */
+const DETAIL_LABEL: Record<string, string> = { para: 'Para', asunto: 'Asunto', cuerpo: 'Mensaje' };
 
 export function App() {
   const [users, setUsers] = useState<Principal[]>([]);
@@ -222,7 +226,19 @@ export function App() {
                     <p id={`c-${op.pending.id}`}>
                       <strong>Necesito tu OK:</strong> {op.pending.summary}
                     </p>
-                    <p className="muted">Acción irreversible ({op.pending.tool}). Parámetros: {JSON.stringify(op.pending.params)}</p>
+                    {op.pending.details ? (
+                      <dl className="confirm-details">
+                        {Object.entries(op.pending.details).map(([key, value]) => (
+                          <div key={key} className={`confirm-row is-${key}`}>
+                            <dt>{DETAIL_LABEL[key] ?? key}</dt>
+                            <dd>{typeof value === 'string' ? value : JSON.stringify(value)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <p className="muted">Parámetros: {JSON.stringify(op.pending.params)}</p>
+                    )}
+                    <p className="muted">Acción irreversible ({op.pending.tool}). Esto es lo que se enviará tal cual.</p>
                     <div className="confirm-actions">
                       <button type="button" className="btn primary" onClick={() => void op.decide(true)}>
                         Aprobar
@@ -233,7 +249,8 @@ export function App() {
                     </div>
                   </div>
                 )}
-                {(turn.reply || turn.error) && <div className={`msg vex ${turn.error ? 'is-error' : ''}`}>{turn.error ?? turn.reply}</div>}
+                {turn.cancelled && <div className="msg vex is-stopped">Detenido. No he hecho nada más.</div>}
+                {!turn.cancelled && (turn.reply || turn.error) && <div className={`msg vex ${turn.error ? 'is-error' : ''}`}>{turn.error ?? turn.reply}</div>}
               </div>
             ))}
           </div>
@@ -252,9 +269,15 @@ export function App() {
               rows={2}
               disabled={!auth || op.busy}
             />
-            <button type="submit" className="btn primary" disabled={!auth || op.busy || !draft.trim()}>
-              Enviar
-            </button>
+            {op.busy ? (
+              <button type="button" className="btn danger" onClick={() => void op.stop()}>
+                Detener
+              </button>
+            ) : (
+              <button type="submit" className="btn primary" disabled={!auth || !draft.trim()}>
+                Enviar
+              </button>
+            )}
           </form>
           <p className="hint">
             Contexto que viaja con el mensaje: <code>{JSON.stringify(context)}</code>

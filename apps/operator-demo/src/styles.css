@@ -555,3 +555,48 @@ a.pill {
     grid-template-columns: 1fr;
   }
 }
+
+/* Stop and confirmation details */
+.btn.danger {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: #ffd9da;
+}
+
+.msg.is-stopped {
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+
+.step.is-cancelled .step-dot {
+  background: var(--text-muted);
+}
+
+.confirm-details {
+  margin: 0 0 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+}
+
+.confirm-row dt {
+  color: var(--text-3);
+}
+
+.confirm-row dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.confirm-row.is-cuerpo dd {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 11px/1.4 var(--font-mono);
+}

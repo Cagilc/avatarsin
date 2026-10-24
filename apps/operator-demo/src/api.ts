@@ -54,6 +54,17 @@ export async function confirm(token: string, sessionId: string, actionId: string
   );
 }
 
+/** Stops the run in progress for this session; the stream then ends with a `cancelled` event. */
+export async function stop(token: string, sessionId: string): Promise<{ stopped: boolean }> {
+  return json(
+    await fetch(`${API_URL}/operator/stop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sessionId }),
+    }),
+  );
+}
+
 export type StreamEvent = OperatorEvent | { type: 'session'; sessionId: string };
 
 /** POST /operator/chat and deliver each SSE event as it arrives. Resolves when the stream ends. */
