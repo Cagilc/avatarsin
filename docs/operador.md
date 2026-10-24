@@ -92,7 +92,7 @@ En local usan el **Edge instalado** (binario firmado: la directiva no lo bloquea
 
 ## Comprobado
 
-- Tests: `pnpm test` (operator 22, api 27 con la puerta del banco), `pnpm eval` 15/15 en modo guion, `pnpm e2e` 7/7 en Edge.
+- Tests: `pnpm test` (operator 25, connectors 16, api 39 con la puerta del banco), `pnpm eval` 15/15 en modo guion, `pnpm e2e` 9/9 en Edge.
 - Navegador (2026-10-24): la tarjeta muestra para, asunto y cuerpo reales; Detener deja el paso de envío como "detenido", no sale ningún correo y vuelve el botón Enviar.
 
 ## Seguridad que ya está y la que falta
@@ -103,4 +103,4 @@ Está: nada se ejecuta fuera de la política; lo irreversible espera confirmaci�
 
 - Ejecutar el banco con Claude y fijar el acierto mínimo con datos.
 - Conectar el backend real (adaptador HTTP de `PlatformClient` + verificación del JWT).
-- Tramo 2: conectores desde OpenAPI y MCP, con el riesgo aprobado por una persona.
+- Tramo 2 hecho: conectores desde OpenAPI y MCP con el riesgo aprobado por una persona. Ver `docs/conectores.md`.

@@ -15,9 +15,13 @@ apps/
                     contexto de pantalla, chat con pasos, tarjeta de confirmación y el
                     avatar dirigido por eventos reales.
   api/evals/        Banco de encargos: casos, ejecutor e informes.
+  sample-tools/     Herramientas "de terceros" para probar conectores: una agenda de citas
+                    descrita con OpenAPI y un tablón de notas como servidor MCP.
 e2e/                Pruebas en navegador real con Playwright.
 packages/
   operator/         Contratos (Zod) y el bucle del operador, sin SDK de ningún proveedor.
+  connectors/       Conectores: importar OpenAPI o MCP, riesgo sugerido, revisión humana,
+                    validación de entradas y ejecución. Cliente MCP propio (stdio y HTTP).
   vex/              El avatar 2D: rig SVG por capas con 8 estados, 5 expresiones,
                     9 visemas y niveles de detalle. Solo depende de React.
 assets/
@@ -25,6 +29,7 @@ assets/
   vex-3d/           Modelo GLB con 8 clips de animación, visor Three.js y exportador.
 docs/
   operador.md                 Cómo funciona el prototipo y cómo conectar un backend real.
+  conectores.md               Cómo aprende Vex una herramienta nueva, con aprobación humana.
   vex-agente-viabilidad.md    Informe de viabilidad y hoja de ruta de 5 hitos.
 ```
 
@@ -44,10 +49,12 @@ Comprobaciones:
 
 ```bash
 pnpm typecheck
-pnpm test                            # contratos, bucle, API y puerta del banco de encargos
-pnpm eval -- --provider scripted     # banco de 24 encargos (15 en modo guion)
-pnpm e2e                             # 7 pruebas en navegador real (en Windows usa Edge)
+pnpm test                            # contratos, bucle, conectores, API y puerta del banco
+pnpm eval -- --provider scripted     # banco de 28 encargos (15 en modo guion)
+pnpm e2e                             # 9 pruebas en navegador real (en Windows usa Edge)
 ```
+
+**Conectar una herramienta nueva:** arranca la agenda de muestra (`pnpm dev:citas`), abre `http://localhost:5174/#conectores`, pulsa Importar, revisa el riesgo de cada acción, activa lo que quieras y guarda. Desde el chat: `usa citas_listar_huecos {"fecha":"2026-10-27"}`, o en lenguaje natural si hay clave de Claude. Detalle y reglas en `docs/conectores.md`.
 
 Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
 
