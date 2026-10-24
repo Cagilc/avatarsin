@@ -293,7 +293,7 @@ export function ConnectorsPage() {
               Argumentos <span className="muted">(uno por línea)</span>
               <textarea rows={2} {...field('args')} placeholder="ruta/a/apps/sample-tools/src/notas-mcp.ts" />
             </label>
-            <p className="muted wide">El comando tiene que estar en VEX_MCP_ALLOW del servidor: arrancar un proceso es ejecutar código en esa máquina.</p>
+            <p className="muted wide">La línea completa (comando y argumentos) tiene que estar en VEX_MCP_ALLOW del servidor: arrancar un proceso es ejecutar código en esa máquina.</p>
           </div>
         )}
         <button type="submit" className="btn primary" disabled={!auth || busy}>

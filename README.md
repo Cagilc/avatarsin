@@ -30,6 +30,7 @@ assets/
 docs/
   operador.md                 Cómo funciona el prototipo y cómo conectar un backend real.
   conectores.md               Cómo aprende Vex una herramienta nueva, con aprobación humana.
+  seguridad.md                Modelo de amenazas: qué protege a Vex, cómo se comprueba y qué falta.
   vex-agente-viabilidad.md    Informe de viabilidad y hoja de ruta de 5 hitos.
 ```
 

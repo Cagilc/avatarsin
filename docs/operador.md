@@ -97,7 +97,7 @@ En local usan el **Edge instalado** (binario firmado: la directiva no lo bloquea
 
 ## Seguridad que ya está y la que falta
 
-Está: nada se ejecuta fuera de la política; lo irreversible espera confirmación con el contenido real y tiempo límite (5 min, luego rechazado); parada a petición y al cerrar la página; topes de acciones y de mensajes; el principal viaja en cada acción y la auditoría persistente se filtra por usuario; el system prompt declara que el contenido de las herramientas son datos, no instrucciones; casos de inyección en el banco. Falta: medir esos casos con Claude, límite de gasto en euros por usuario, y una parada global para administradores.
+Modelo de amenazas, defensas y lo que falta antes de producción: `docs/seguridad.md`. En resumen: tokens firmados y con caducidad, login de demo solo en local, navegadores solo desde las páginas listadas, rutas de administración por rol, servidores MCP locales solo por línea de comando exacta, URL de importación solo https y públicas, política que no amplía lo aprobado, validación por esquema, topes de rondas, acciones y mensajes, parada, sesiones y auditoría por usuario, y el contenido de las herramientas tratado como dato. Falta: autenticación real de la plataforma, TLS, medir la inyección con Claude, límite de gasto y parada global.
 
 ## Siguiente
 

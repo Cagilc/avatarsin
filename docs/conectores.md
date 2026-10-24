@@ -27,7 +27,9 @@ Un conector convierte una herramienta que Vex no conocía en acciones que puede 
 ## Seguridad
 
 - **Secretos**: el manifiesto solo guarda el *nombre* de la variable de entorno (`CITAS_TOKEN`). El valor vive en el entorno de Vex Core, nunca en la base de datos, el navegador ni la conversación.
-- **MCP local = ejecutar código** en el servidor: solo arrancan los comandos listados en `VEX_MCP_ALLOW` (comando exacto o nombre de archivo). Sin la variable, en local se permite `node`; en un servidor público, nada.
+- **MCP local = ejecutar código** en el servidor: solo arranca una **línea de comando completa** (comando y argumentos) que esté en `VEX_MCP_ALLOW`. Un intérprete listado con otros argumentos se rechaza. Sin la variable no arranca ninguno, tampoco en local.
+- **Importar desde una URL** (OpenAPI o MCP remoto): solo https y nunca hacia esta máquina ni redes privadas; en un servidor local se relaja para las herramientas de muestra.
+- Importar, revisar y borrar exigen un token firmado con rol `admin`, y solo desde las páginas listadas en `CORS_ORIGIN`. Modelo de amenazas completo en `docs/seguridad.md`.
 - Un conector no puede generar herramientas con el nombre de una de la plataforma (`crear` + `tarea` daría `crear_tarea`): se rechaza.
 - Las entradas se validan contra el JSON Schema de cada herramienta antes de llamar al servicio. El validador es un subconjunto propio (tipos, obligatorios, enumerados, rangos, longitudes, patrones, formatos de fecha y email, `anyOf`/`oneOf`/`allOf`, `nullable`); lo desconocido se ignora.
 - Las respuestas se recortan a 8.000 caracteres y las imágenes se resumen como `[imagen …]` antes de llegar al modelo.
@@ -47,13 +49,13 @@ Con Claude no hace falta: se pide en lenguaje natural ("dale una cita a Marco el
 ## Herramientas de muestra (`apps/sample-tools`)
 
 - **Agenda de citas**: una API de terceros descrita solo por su OpenAPI (`pnpm dev:citas`, `http://127.0.0.1:8790/openapi.json`). Seis operaciones: huecos, citas, reservar, detalle, cancelar y recordatorio. Admite token opcional (`CITAS_TOKEN`).
-- **Tablón de notas**: un servidor MCP por stdio (`node apps/sample-tools/src/notas-mcp.ts`) con cuatro herramientas anotadas.
+- **Tablón de notas**: un servidor MCP por stdio (`node apps/sample-tools/src/notas-mcp.ts`) con cuatro herramientas anotadas. Para conectarlo desde la demo, pon esa línea completa en `VEX_MCP_ALLOW` de `apps/api/.env`.
 
 ## Comprobado con una herramienta real: VectorCraft
 
 El CLI de VectorCraft instalado en este equipo trae un servidor MCP (`vectorcraft-cli.exe mcp --headless`) con 32 herramientas anotadas. A través de Vex Core, sin escribir código para él:
 
-1. Importado con `VEX_MCP_ALLOW` apuntando al ejecutable y las carpetas confinadas (`--automation-read-root`/`--automation-write-root`). Riesgos sugeridos: `inspect_document` lectura; `draw_shape` y `export` irreversibles, porque el servidor los declara destructivos.
+1. Importado con la línea exacta en `VEX_MCP_ALLOW`: el ejecutable, `mcp --headless` y las carpetas confinadas (`--automation-read-root`/`--automation-write-root`). Riesgos sugeridos: `inspect_document` lectura; `draw_shape` y `export` irreversibles, porque el servidor los declara destructivos.
 2. Revisión: `draw_shape` y `add_text` aprobados como **escritura**, con el motivo "Edita el documento en memoria; se deshace con undo". `export` sigue irreversible porque escribe un archivo. El resto, apagado.
 3. Vex dibujó un rectángulo y un texto sin preguntar y pidió confirmación para exportar. Tras aprobarla, el PNG quedó en la carpeta confinada.
 
