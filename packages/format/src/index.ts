@@ -5,3 +5,4 @@ export * from './resolve.ts';
 export * from './presets.ts';
 export * from './sign.ts';
 export * from './svgPolicy.ts';
+export * from './samples/vex.ts';

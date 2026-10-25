@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vex en una página cualquiera</title>
+    <!-- Las dos líneas que pega el host: el script que sirve Vex Core y la etiqueta. -->
+    <script type="module" src="http://127.0.0.1:8787/assistant.js"></script>
+  </head>
+  <body style="margin: 0; display: grid; grid-template-columns: 1fr 420px; height: 100vh; font-family: system-ui, sans-serif">
+    <main style="padding: 24px">
+      <h1 data-vex-id="titulo">Mi plataforma</h1>
+      <p>Vex opera aquí con los permisos del usuario conectado. Los elementos con <code>data-vex-id</code> son los únicos que Vex conoce; lo marcado con <code>data-vex-private</code> nunca se lee.</p>
+      <form data-vex-private>
+        <label>Tarjeta <input value="4111 1111 1111 1111" /></label>
+      </form>
+    </main>
+    <!--
+      El token nunca va en un atributo. En producción el host lo entrega con una función:
+        document.querySelector('vex-assistant').getToken = async () => miSesion.tokenParaVex();
+      En un Vex Core local, `demo-user` entra como usuario de demo sin contraseña.
+    -->
+    <vex-assistant api="http://127.0.0.1:8787" demo-user="u-cesar"></vex-assistant>
+  </body>
+</html>

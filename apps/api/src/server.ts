@@ -49,6 +49,7 @@ const app = buildApp({
   platform: new MockPlatform(),
   store,
   ...(manifest ? { manifest } : {}),
+  assistantBundle: join(root, '..', '..', 'packages', 'assistant', 'dist', 'vex-assistant.js'),
   allowedOrigins,
   tokens,
   demoLogin,

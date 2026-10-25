@@ -94,7 +94,7 @@ El sitio cambia el atributo `state` para que hable, piense o salude; el elemento
 1. **Imágenes en piezas**: separar un PNG en piezas con PhotoCraft (`select.subject`, `layer.removeBackground`) y vectorizar con VectorCraft (`imageTrace`), en el servidor y aislado.
 2. **Malla y deformación**: compilar `puppet` (mesh + ARAP) de EffectCraft a WebAssembly en CI y añadir una capa de malla con pines.
 3. **Editor de animación**: línea de tiempo con claves por pieza.
-4. **Visemas y caras** como en el avatar Vex (bocas por fonema, ojos).
+4. **Visemas y caras**: hecho sin cambiar el formato. Vex entra en el estudio («Probar con Vex, el operador») con cada variante de ojos y de boca como pieza y los clips encendiéndolas con pistas de opacidad a saltos; `talk` turna los nueve visemas (`packages/format/src/samples/vex.ts`). Queda para más adelante un editor de caras para avatares nuevos.
 5. **Asistente con visión**: enviar una imagen del avatar a Claude para que razone sobre lo que ve.
 6. **Puente con el operador**: hecho en el paso 1 del plan maestro. Vex Core lee el *grant* firmado (`apps/api/src/grant.ts`), lo verifica con la clave pública que fija el manifiesto del host y limita las herramientas por integración. El *grant* lleva `expiresAt` (10 minutos) para que una revocación llegue rápido al operador.
 7. **Despliegue**: Docker, `STUDIO_SIGNING_KEY` en un gestor de secretos, copias de seguridad del SQLite.

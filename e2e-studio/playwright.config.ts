@@ -8,7 +8,12 @@ const CI = Boolean(process.env['CI']);
  */
 const channel = process.env['PW_CHANNEL'] ?? (CI ? undefined : 'msedge');
 
-export const PORTS = { server: 8798, studio: 5190, host: 5191, intruder: 5192 } as const;
+/**
+ * server/studio: the studio and its API. host/intruder: third-party pages (one authorized, one
+ * not). demo: the operator demo page, pointed at a Vex Core the assistant test starts itself on
+ * `core`, with a manifest that names the avatar published during the test.
+ */
+export const PORTS = { server: 8798, studio: 5190, host: 5191, intruder: 5192, demo: 5193, core: 8797 } as const;
 
 export default defineConfig({
   testDir: 'tests',
@@ -29,8 +34,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      // The embeddable script must exist before the server starts serving it.
-      command: `pnpm --dir ../packages/runtime build && pnpm --dir ../apps/server start`,
+      // The embeddable scripts must exist before the servers serve them.
+      command: `pnpm --dir ../packages/runtime build && pnpm --dir ../packages/assistant build && pnpm --dir ../apps/server start`,
       url: `http://127.0.0.1:${PORTS.server}/health`,
       env: {
         PORT: String(PORTS.server),
@@ -56,6 +61,14 @@ export default defineConfig({
       url: `http://localhost:${PORTS.host}/health`,
       reuseExistingServer: false,
       timeout: 30_000,
+    },
+    {
+      // The operator demo, talking to the Vex Core the assistant test starts.
+      command: `pnpm --dir ../apps/operator-demo exec vite --port ${PORTS.demo} --strictPort`,
+      url: `http://localhost:${PORTS.demo}`,
+      env: { VITE_VEX_API: `http://127.0.0.1:${PORTS.core}` },
+      reuseExistingServer: false,
+      timeout: 120_000,
     },
   ],
 });

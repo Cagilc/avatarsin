@@ -29,8 +29,12 @@ apps/
   studio/           Estudio: editor (logo, esqueleto, física, materiales, personalidad).
 e2e/                Pruebas en navegador real del operador.
 e2e-studio/         Pruebas en navegador real del estudio, con una web de otro dominio.
+examples/
+  asistente.html    Una página sin framework con Vex en dos líneas.
 packages/
-  format/           Estudio: documento del avatar, operaciones, firma Ed25519.
+  assistant/        <vex-assistant>: el panel del operador en una etiqueta (chat, confirmación,
+                    Detener, avatar del estudio dirigido por fases) y el registro de elementos.
+  format/           Estudio: documento del avatar, operaciones, firma Ed25519 y Vex como muestra.
   runtime/          Estudio: dibujo, esqueleto, muelles, materiales y <vex-avatar>.
   operator/         Contratos (Zod) y el bucle del operador, sin SDK de ningún proveedor.
   connectors/       Conectores: importar OpenAPI o MCP, riesgo sugerido, revisión humana,
@@ -79,7 +83,8 @@ pnpm typecheck
 pnpm test                            # contratos, bucle, conectores, API y puerta del banco
 pnpm eval -- --provider scripted     # banco de 28 encargos (15 en modo guion)
 pnpm e2e                             # 9 pruebas del operador en navegador real (en Windows usa Edge)
-pnpm e2e:studio                      # 4 recorridos del estudio, con incrustación en otro dominio
+pnpm e2e:studio                      # el estudio en Edge: 4 recorridos, Vex importado con caras y visemas,
+                                     # y el avatar publicado operando en la demo y en una página HTML simple
 ```
 
 **Conectar una herramienta nueva:** arranca la agenda de muestra (`pnpm dev:citas`), abre `http://localhost:5174/#conectores`, pulsa Importar, revisa el riesgo de cada acción, activa lo que quieras y guarda. Desde el chat: `usa citas_listar_huecos {"fecha":"2026-10-27"}`, o en lenguaje natural si hay clave de Claude. Detalle y reglas en `docs/conectores.md`.
@@ -89,7 +94,7 @@ Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco.
 ## Cómo se integra en una plataforma real
 
 0. **Manifiesto:** la plataforma se describe en un `manifest.json` (`presets/`, `VEX_HOST_MANIFEST`): nombre, dominio, claves del contexto de pantalla, conectores propuestos (sin revisar hasta que un administrador los apruebe), política y el avatar publicado por el estudio. Vive en el servidor y solo puede estrechar lo que Vex hace. Detalle en `docs/operador.md`.
-1. **Presencia:** la página monta el avatar y el panel de chat (hoy, el componente React de `apps/operator-demo`; el objetivo del Hito 2 es un web component de una sola etiqueta).
+1. **Presencia:** dos líneas en la página: `<script type="module" src="https://vex.example/assistant.js">` y `<vex-assistant api="https://vex.example">`. El token lo entrega el host con `el.getToken = async () => …`, nunca en el DOM. El panel dibuja el avatar que el estudio publicó para el host y lo mueve con las fases del operador. Detalle en `docs/operador.md`.
 2. **Manos:** implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP al backend, pasando el token del usuario, y sustituir `MockPlatform` en `apps/api/src/server.ts`. Las herramientas no cambian.
 3. **Identidad:** `TokenService` en `apps/api/src/auth.ts` firma y verifica los tokens de sesión; el punto de cambio es su método `verify`, que debe validar el JWT de la plataforma y convertirlo en el principal. El operador nunca tiene más poder que esa persona.
 4. **Contexto:** la página envía con cada mensaje qué hay en pantalla (`contactoId`, `expedienteId`, `pantalla`).

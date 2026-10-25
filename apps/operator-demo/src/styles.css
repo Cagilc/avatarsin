@@ -211,12 +211,16 @@ select {
   color: var(--text-2);
 }
 
-/* Vex panel */
+/* Vex panel: the <vex-assistant> element fills the column and brings its own styles. */
 .vex {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: 1fr;
   min-height: 0;
   background: var(--surface-2);
+}
+
+.vex vex-assistant {
+  min-height: 0;
 }
 
 .vex-head {

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
+    "@vex/assistant": "workspace:*",
     "@vex/avatar": "workspace:*",
     "@vex/operator": "workspace:*",
     "react": "^19.3.1",

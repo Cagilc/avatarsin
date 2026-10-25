@@ -1,0 +1,160 @@
+import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { expect, test, type Page } from '@playwright/test';
+import { PORTS } from '../playwright.config.ts';
+
+/**
+ * The avatar designed in the studio operates in the demo and in a plain HTML page: published and
+ * integrated here, named by a host manifest that this test writes, then served by a Vex Core
+ * started here with that manifest. The grant fetched from the studio limits the tools; the
+ * published personality names the operator.
+ */
+
+const STUDIO = `http://localhost:${PORTS.server}`;
+const DEMO = `http://localhost:${PORTS.demo}`;
+const SITE = `http://localhost:${PORTS.host}`;
+const CORE = `http://127.0.0.1:${PORTS.core}`;
+const TOOLS = ['buscar', 'leer_expediente', 'crear_expediente', 'crear_tarea', 'redactar_correo', 'enviar_correo'];
+const LONG_REQUEST = /^Busca a Laura Pérez, abre expediente/;
+
+let core: ChildProcess | null = null;
+let dir: string | null = null;
+
+async function newAvatarFromSample(page: Page, name: string) {
+  await page.goto('/');
+  await page.getByTestId('dev-login').click();
+  await page.getByTestId('new-avatar-name').fill(name);
+  await page.getByTestId('new-avatar').click();
+  await page.getByTestId('use-sample').click();
+  await expect(page.locator('.part-row')).toHaveCount(7);
+}
+
+async function acceptProposal(page: Page, message: string) {
+  await page.getByTestId('assistant-input').fill(message);
+  await page.getByTestId('assistant-propose').click();
+  await expect(page.getByTestId('proposal')).toBeVisible();
+  const before = await page.getByTestId('revision').innerText();
+  await page.getByTestId('assistant-accept').click();
+  await expect(page.getByTestId('proposal')).toBeHidden();
+  await expect(page.getByTestId('revision')).not.toHaveText(before);
+}
+
+async function waitFor(url: string, ms: number): Promise<void> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    try {
+      if ((await fetch(url)).ok) return;
+    } catch {
+      // not up yet
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`${url} no responde`);
+}
+
+test.describe.configure({ mode: 'serial' });
+test.setTimeout(120_000);
+
+test.beforeAll(async ({ browser }) => {
+  // 1. Design, publish and integrate an avatar in the studio, as the owner would.
+  const page = await browser.newPage();
+  await newAvatarFromSample(page, 'Pixel');
+  await acceptProposal(page, 'dibujo plano, la antena rebota, se llama Pixel');
+  const token = await page.evaluate(() => sessionStorage.getItem('vexstudio.token'));
+  expect(token).toBeTruthy();
+  const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const res = await fetch(`${STUDIO}${path}`, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+    return (await res.json()) as T;
+  };
+  const { avatars } = await api<{ avatars: Array<{ id: string; name: string; revision: number }> }>('GET', '/api/avatars');
+  const pixel = avatars.find((a) => a.name === 'Pixel')!;
+  const saved = await api<{ revision: number }>('POST', `/api/avatars/${pixel.id}/ops`, {
+    ops: [
+      { op: 'setPersonality', patch: { displayName: 'Pixel', tone: 'divertido', greeting: '¡Hola! Soy Pixel.' } },
+      { op: 'setCapabilities', capabilities: { tools: TOOLS, maxRisk: 'irreversible' } },
+    ],
+    baseRevision: pixel.revision,
+    summary: 'Personalidad y capacidades para la demo',
+  });
+  await api('POST', `/api/avatars/${pixel.id}/publish`, {});
+  const { key } = await api<{ key: { id: string } }>('POST', `/api/avatars/${pixel.id}/keys`, { label: 'Demo', origins: [DEMO, SITE], tools: TOOLS, maxRisk: 'irreversible' });
+  const signing = await api<{ publicKey: string; keyId: string }>('GET', `/api/avatars/${pixel.id}/keys`);
+  await page.close();
+  expect(saved.revision).toBeGreaterThan(pixel.revision);
+
+  // 2. A host manifest that names that integration, and a Vex Core started with it.
+  dir = mkdtempSync(join(tmpdir(), 'vex-host-'));
+  const manifest = {
+    format: 'vex-host',
+    version: 1,
+    host: { name: 'Demo Negocio', domain: 'localhost' },
+    avatar: { endpoint: `${STUDIO}/v1/embed/${key.id}`, publicKey: signing.publicKey, keyId: signing.keyId },
+    screenContext: { pantalla: { description: 'Vista abierta.' }, contactoId: { description: 'Id del contacto abierto.' }, contactoEmail: { description: 'Correo del contacto abierto.' }, expedienteId: { description: 'Expediente abierto.' } },
+  };
+  const file = join(dir, 'manifest.json');
+  writeFileSync(file, JSON.stringify(manifest));
+  const apiDir = fileURLToPath(new URL('../../apps/api/', import.meta.url));
+  core = spawn(process.execPath, ['src/server.ts'], {
+    cwd: apiDir,
+    env: { ...process.env, PORT: String(PORTS.core), HOST: '127.0.0.1', VEX_DB: 'memory', VEX_PROVIDER: 'scripted', VEX_DEMO_LOGIN: '1', VEX_RATE_LIMIT: '200', CORS_ORIGIN: `${DEMO},${SITE}`, VEX_HOST_MANIFEST: file },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  core.stderr?.on('data', (d: Buffer) => process.stderr.write(`[vex core] ${d}`));
+  await waitFor(`${CORE}/health`, 30_000);
+
+  // Vex Core read and verified the grant: the integration's tools, the published personality.
+  const info = (await (await fetch(`${CORE}/operator/info`)).json()) as { grant: { status: string; tools?: string[] }; personality: { name: string }; tools: Array<{ name: string }> };
+  expect(info.grant.status).toBe('ok');
+  expect(info.grant.tools).toEqual(TOOLS);
+  expect(info.personality.name).toBe('Pixel');
+  expect(info.tools.map((t) => t.name)).toEqual([...TOOLS, 'leer_guia']);
+});
+
+test.afterAll(() => {
+  core?.kill();
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
+
+test('el avatar del estudio opera en la demo: nombre, estados por fase y el correo real con confirmación', async ({ page }) => {
+  await page.goto(`${DEMO}/`);
+  await expect(page.getByRole('button', { name: /Laura Pérez laura\.perez/ })).toBeVisible();
+  const assistant = page.locator('vex-assistant');
+  await expect(assistant.locator('.name')).toHaveText('Pixel');
+  const avatar = assistant.locator('vex-avatar');
+  await expect(avatar).toHaveCount(1);
+  // Drawn from the signed package: the runtime put the parts on the stage.
+  await expect.poll(() => avatar.evaluate((el) => (el as HTMLElement & { avatar: { personality: { displayName: string } } | null }).avatar?.personality.displayName ?? null)).toBe('Pixel');
+
+  await page.getByRole('button', { name: LONG_REQUEST }).click();
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+  const card = page.getByRole('alertdialog');
+  await expect(card).toContainText('laura.perez@ejemplo.es');
+  await expect(page.locator('.vex .label')).toHaveText('espero tu OK');
+  await expect(avatar).toHaveAttribute('state', 'attention');
+  await test.info().attach('esperando-ok', { body: await page.locator('.vex-head').screenshot(), contentType: 'image/png' });
+
+  await card.getByRole('button', { name: 'Aprobar' }).click();
+  await expect(page.locator('.msg.vex').last()).toContainText('Correo enviado a laura.perez@ejemplo.es');
+  await expect(page.locator('.turn').last().locator('.step-state')).toHaveText(['hecho', 'hecho', 'hecho', 'hecho', 'hecho']);
+  await expect(avatar).toHaveAttribute('state', 'happy');
+  await expect(page.getByText(/Pedir documentación \(expediente EXP-\d{4}-\d+\)/).first()).toBeVisible();
+});
+
+test('una página HTML sin framework: dos líneas, el avatar del estudio y una petición', async ({ page }) => {
+  await page.goto(`${SITE}/asistente?api=${encodeURIComponent(CORE)}`);
+  await expect(page.locator('#status')).toHaveText('listo:Pixel avatar:Pixel');
+  const assistant = page.locator('vex-assistant');
+  await expect(assistant.locator('.who')).toHaveText('actúa como César Gil');
+  // The registry knows the title and leaves the password field out, value included.
+  const snapshot = await assistant.evaluate((el) => (el as HTMLElement & { registry: { snapshot(): unknown[] } }).registry.snapshot());
+  expect(snapshot).toEqual([{ id: 'titulo', role: 'heading', label: 'Página simple' }]);
+
+  await assistant.getByPlaceholder(/qué hacer/).fill('¿Quién es Marco Rossi?');
+  await assistant.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await expect(page.locator('.msg.vex').last()).toContainText('Marco Rossi');
+  await expect(page.locator('.turn').last().locator('.step-state').first()).toHaveText('hecho');
+});

@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -31,6 +32,8 @@ export interface AppOptions {
   manifest?: HostManifest;
   /** How the grant is fetched from the studio (tests inject a fetch and a clock). */
   grant?: { fetch?: typeof fetch; now?: () => number; refreshMs?: number };
+  /** Path of the built <vex-assistant> script (packages/assistant/dist/vex-assistant.js), served at GET /assistant.js. */
+  assistantBundle?: string;
   /**
    * Pages allowed to call Vex Core from a browser, as exact origins (scheme://host:port).
    * Any other origin gets no CORS headers and a 403 on state-changing requests. Empty = browsers blocked.
@@ -150,7 +153,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const kept = new Set<AnyTool>(permittedTools(all.filter((t) => t !== guide), policy, state ? GrantClient.layer(state) : undefined));
     return all.filter((t) => kept.has(t) || (t === guide && decide(policy, guide) !== 'deny'));
   };
-  const currentSystem = (): string => buildSystemPrompt(personality, host, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  /** The published avatar's personality when the studio gave one with a valid grant; the server's otherwise. */
+  const currentPersonality = async (): Promise<VexPersonality> => {
+    const state = await grantState();
+    return state?.status === 'ok' && state.personality ? state.personality : personality;
+  };
+  const currentSystem = async (): Promise<string> => buildSystemPrompt(await currentPersonality(), host, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  const assistantJs = opts.assistantBundle && existsSync(opts.assistantBundle) ? readFileSync(opts.assistantBundle, 'utf8') : null;
   const sessions = new SessionStore(store);
   const confirmTimeoutMs = opts.confirmTimeoutMs ?? 5 * 60_000;
   const limits = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
@@ -181,17 +190,25 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.get('/health', async () => ({ ok: true }));
 
+  // The embeddable panel. Public like any script a page loads; it carries no secret.
+  app.get('/assistant.js', async (_req, reply) => {
+    if (!assistantJs) return reply.code(404).send({ error: 'Falta compilar el asistente (pnpm build).' });
+    return reply.header('content-type', 'text/javascript; charset=utf-8').header('access-control-allow-origin', '*').header('cross-origin-resource-policy', 'cross-origin').header('cache-control', 'public, max-age=300').send(assistantJs);
+  });
+
   app.get('/operator/info', async () => {
     const state = await grantState();
     return {
       provider: opts.provider.name,
       providerProxy,
-      personality,
+      personality: await currentPersonality(),
       policy,
       host: {
         name: host.name,
         manifest: manifest !== undefined,
         ...(manifest ? { domain: manifest.host.domain, features: manifest.features, proposals } : {}),
+        // Where the page's <vex-assistant> finds the published avatar; public values, as in the studio's snippet.
+        ...(manifest?.avatar ? { avatar: manifest.avatar } : {}),
       },
       grant: state === null ? { status: 'none' } : state.status === 'ok' ? { status: 'ok', tools: state.grant.tools, maxRisk: state.grant.maxRisk, expiresAt: state.grant.expiresAt } : state,
       tools: (await currentTools()).map((t) => ({ name: t.name, driver: t.driver, risk: t.risk, description: t.description })),
@@ -281,7 +298,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         context: body.data.context ?? {},
         history: session.history,
         userMessage: body.data.message,
-        system: currentSystem(),
+        system: await currentSystem(),
         emit: send,
         confirm: (action) => sessions.waitForConfirmation(session, action, confirmTimeoutMs),
         audit: (entry) => store.recordAudit(entry),

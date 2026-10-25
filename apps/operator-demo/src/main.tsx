@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
+// Registers <vex-assistant> and the studio's <vex-avatar>, exactly as the script Vex Core serves.
+import '@vex/assistant/embed';
 import './styles.css';
 import { App } from './App';
 import { ConnectorsPage } from './ConnectorsPage';

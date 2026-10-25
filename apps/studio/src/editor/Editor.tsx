@@ -4,7 +4,8 @@ import type { Config, User } from '../api.ts';
 import { AssistantPanel } from './AssistantPanel.tsx';
 import { useAssets } from './assets.ts';
 import { HistoryPanel } from './HistoryPanel.tsx';
-import { importLogo } from './importLogo.ts';
+import { importLogo, type ImportResult } from './importLogo.ts';
+import { importVexSample } from './importVex.ts';
 import { Inspector, ROLE_LABEL, STATE_LABEL } from './Inspector.tsx';
 import { PublishPanel } from './PublishPanel.tsx';
 import { Stage } from './Stage.tsx';
@@ -51,21 +52,24 @@ export function Editor({ avatarId, user, config, onBack }: { avatarId: string; u
 
   if (!doc || !shown) return <div className="loading">{avatar.error ?? 'Cargando…'}</div>;
 
-  const onFile = async (file: File) => {
+  const runImport = async (label: string, run: () => Promise<ImportResult>, after: 'rest' | 'play') => {
     setImporting(true);
     setNotice(null);
     try {
-      const r = await importLogo(file, doc);
+      const r = await run();
       assets.set(r.asset.hash, r.asset.loaded);
-      avatar.apply(r.ops, { lock: false, summary: `Importado: ${file.name}`.slice(0, 300) });
+      avatar.apply(r.ops, { lock: false, summary: `Importado: ${label}`.slice(0, 300) });
       setNotice(r.note ?? `Importado en ${r.parts} piezas. Pide al asistente que lo prepare, o monta el esqueleto a mano.`);
-      setMode('rest');
+      setMode(after);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
   };
+  const onFile = (file: File) => runImport(file.name, () => importLogo(file, doc), 'rest');
+  // Vex arrives rigged and animated: play it at once.
+  const onVex = () => runImport('Vex', () => importVexSample(doc), 'play');
 
   return (
     <div className="editor">
@@ -151,6 +155,9 @@ export function Editor({ avatarId, user, config, onBack }: { avatarId: string; u
                 }
               >
                 Probar con la mascota de ejemplo
+              </button>
+              <button type="button" className="secondary" disabled={importing} data-testid="use-vex" onClick={() => void onVex()}>
+                Probar con Vex, el operador
               </button>
             </div>
           ) : (

@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ScriptedProvider, type Completion, type CompletionRequest, type HostAvatar, type HostManifest, type ModelProvider, type OperatorEvent } from '@vex/operator';
 import { createCitasApp } from '@vex/sample-tools';
-import { canonicalJson, exportPublicKey, generateSigningKeys, keyIdOf, toBase64Url } from '@vexstudio/format';
+import { canonicalJson, exportPublicKey, generateSigningKeys, keyIdOf, signPackage, toBase64Url } from '@vexstudio/format';
+import { FIXTURE_HASH, fixtureDocument } from '@vexstudio/format/fixtures';
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppOptions } from './app.ts';
 import { verifySignedGrant } from './grant.ts';
@@ -38,7 +39,8 @@ class Spy implements ModelProvider {
 
 interface Info {
   policy: unknown;
-  host: { name: string; manifest: boolean; domain?: string; features?: Record<string, boolean>; proposals?: Array<{ id: string; status: string; error?: string }> };
+  personality: { name: string; tone: string };
+  host: { name: string; manifest: boolean; domain?: string; features?: Record<string, boolean>; proposals?: Array<{ id: string; status: string; error?: string }>; avatar?: HostAvatar };
   grant: { status: string; tools?: string[]; reason?: string; expiresAt?: string };
   tools: Array<{ name: string }>;
 }
@@ -194,6 +196,23 @@ describe('Vex Core with a host manifest', () => {
     expect((await app!.inject({ method: 'GET', url: '/connectors', headers: headers() })).json()).toEqual([]);
   });
 
+  it('serves the embeddable panel script when it is built, and says so when it is not', async () => {
+    await start();
+    expect((await app!.inject({ method: 'GET', url: '/assistant.js' })).statusCode).toBe(404);
+    const dir = mkdtempSync(join(tmpdir(), 'vex-assistant-'));
+    try {
+      writeFileSync(join(dir, 'vex-assistant.js'), 'customElements.define("vex-assistant", class extends HTMLElement {});');
+      await start({ assistantBundle: join(dir, 'vex-assistant.js') });
+      const res = await app!.inject({ method: 'GET', url: '/assistant.js' });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('text/javascript');
+      expect(res.headers['access-control-allow-origin']).toBe('*');
+      expect(res.body).toContain('vex-assistant');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('the agenda preset is a second host with no code of its own: only its connector, after review', async () => {
     const preset = loadHostManifest('agenda');
     // The preset points at the sample service's fixed port; here it runs on a free one, so the
@@ -236,10 +255,13 @@ describe('Vex Core with a host manifest', () => {
     });
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     const manifest = (): HostManifest => ({ ...loadHostManifest('demo-negocio'), avatar });
-    const studio = (answer: () => Promise<Response>) => {
+    /** A fake studio: `answer` serves /grant; /package gets `pkg` when given, 404 otherwise. */
+    const studio = (answer: () => Promise<Response>, pkg?: () => Promise<Response>) => {
       const urls: string[] = [];
       const fetchImpl = (async (input: string | URL | Request) => {
-        urls.push(String(input));
+        const url = String(input);
+        if (url.endsWith('/package')) return pkg ? pkg() : json({ error: 'No existe.' }, 404);
+        urls.push(url);
         return answer();
       }) as typeof fetch;
       return { urls, fetch: fetchImpl };
@@ -263,6 +285,34 @@ describe('Vex Core with a host manifest', () => {
       expect(s.urls).toEqual([`${avatar.endpoint}/grant`]);
       const run = parseSse((await chat('Busca a Laura Pérez')).body);
       expect(run.find((e) => e.type === 'tool_result')).toMatchObject({ outcome: 'ok' });
+    });
+
+    it('tells the page where the avatar is, and takes the published personality for the prompt when the package verifies', async () => {
+      now = T0;
+      const doc = fixtureDocument();
+      doc.personality = { ...doc.personality, displayName: 'Pixel', tone: 'divertido', formality: 0.1, verbosity: 0.9, emoji: true, greeting: '¡Hola, soy Pixel!', about: 'Mascota de una aseguradora.', language: 'es' };
+      const signed = await signPackage({ format: 'vex-avatar-package', packageVersion: 1, avatarId: doc.id, revision: 1, publishedAt: iso(now), document: doc, assets: [{ hash: FIXTURE_HASH, type: 'image/svg+xml', size: 1 }] }, privateKey, avatar.publicKey);
+      const spy = new Spy();
+      const s = studio(
+        async () => json(await sign(grantAt(now))),
+        async () => json(signed),
+      );
+      await start({ provider: spy, manifest: manifest(), grant: { fetch: s.fetch, now: () => now } });
+      const i = await info();
+      expect(i.host.avatar).toEqual(avatar);
+      expect(i.personality.name).toBe('Pixel');
+      expect(i.personality.tone).toMatch(/desenfadado.*tuteo.*detalladas.*emoji.*español.*¡Hola, soy Pixel!.*aseguradora/);
+      await chat('Hola');
+      expect(spy.systems[0]).toContain('Eres Pixel, el operador de Demo Negocio');
+
+      // A package altered on the way: the server's own personality, never the altered one.
+      const tampered = { ...signed, document: { ...doc, personality: { ...doc.personality, displayName: 'Impostor' } } };
+      const t = studio(
+        async () => json(await sign(grantAt(now))),
+        async () => json(tampered),
+      );
+      await start({ manifest: manifest(), grant: { fetch: t.fetch, now: () => now } });
+      expect((await info()).personality.name).toBe('Vex');
     });
 
     it('a grant altered by one byte, signed by another key, or with another key id, leaves no tool', async () => {

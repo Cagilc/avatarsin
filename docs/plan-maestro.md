@@ -90,6 +90,14 @@ Mejoras:
 - Ejemplo HTML sin React en dos líneas; la demo React convive.
 - Portar caras y visemas al formato del estudio.
 - **Hecho cuando:** e2e con el avatar diseñado en el estudio operando en la demo y en una página HTML simple; tests del registro y de campos privados.
+- **Hecho el 2026-10-25** en la rama local `wf/02-asistente`. Puertas: tipado OK, 197 pruebas (operator 39, format 22, runtime 9, connectors 16, server 32, api 68, assistant 11), banco 15/15, e2e del operador 9/9, e2e del estudio 7/7 (4 de antes, Vex importado con caras y visemas, el avatar publicado en la demo y en la página simple). Decisiones tomadas al hacerlo:
+  - `packages/assistant` (`@vex/assistant`) es un paquete sin framework que compila a `dist/vex-assistant.js` e incluye el `<vex-avatar>` del runtime; **Vex Core lo sirve** en `GET /assistant.js`. Shadow DOM abierto, para que los e2e del operador sigan usando sus selectores.
+  - El avatar llega al panel por `GET /operator/info` → `host.avatar` (valores públicos del manifiesto); sin avatar o con `avatar="off"`, panel sin avatar. El director mapea fases a los 8 estados del estudio (sin visemas en el panel: los pone el clip `talk` del avatar).
+  - Token por la propiedad `getToken`; `demo-user` solo para el login de demo local. `context`, `principal` y `suggestions` son propiedades; `vex-turn` avisa al host para refrescar.
+  - La personalidad publicada entra en el prompt: Vex Core descarga y verifica el paquete junto al *grant*; un paquete alterado deja la personalidad del servidor.
+  - El registro de elementos (`data-vex-id`, `register`) existe y está probado, pero **nadie consume aún la instantánea**: la usarán los tours (paso 5) y el driver DOM (paso 6).
+  - Vex entra en el estudio sin cambiar el formato: caras y visemas como piezas con pistas de opacidad a saltos. `packages/vex` (React) queda solo para `#estados`; quitarlo es tarea aparte.
+  - El e2e del avatar en la demo arranca su propio Vex Core (`e2e-studio/tests/asistente.spec.ts`) con un manifiesto escrito al vuelo, porque el `vk_` de la integración se crea en la prueba.
 
 ### Paso 3 · Anuncios y botones rápidos (workflow 04), en paralelo con el 2
 - Como lo propone Oscar; botones con herramienta pasan por política y confirmación; borradores de anuncio desde conectores.

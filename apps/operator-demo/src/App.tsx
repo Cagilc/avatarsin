@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Vex } from '@vex/avatar';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { VexAssistantElement } from '@vex/assistant';
 import type { Principal } from '@vex/operator';
-import { demoUsers, estado as fetchEstado, info as fetchInfo, login, type Estado, type OperatorInfo } from './api';
-import { PHASE_LABEL, useVexDirector } from './director';
-import { useOperator, type Step } from './useOperator';
-
-const AVATAR_H = 150;
+import { API_URL, demoUsers, estado as fetchEstado, info as fetchInfo, login, type Estado, type OperatorInfo } from './api';
 
 const SUGGESTIONS = [
   'Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación',
@@ -13,38 +9,19 @@ const SUGGESTIONS = [
   '¿Quién es Marco Rossi?',
 ];
 
-const OUTCOME_LABEL: Record<Step['outcome'], string> = {
-  pending: 'en curso',
-  confirming: 'espera tu OK',
-  ok: 'hecho',
-  error: 'error',
-  denied: 'denegado',
-  rejected: 'rechazado',
-  invalid: 'inválido',
-  cancelled: 'detenido',
-};
-
-/** Field names of a confirmation preview, as the card shows them. */
-const DETAIL_LABEL: Record<string, string> = {
-  para: 'Para',
-  asunto: 'Asunto',
-  cuerpo: 'Mensaje',
-  // Connectors: the exact request (OpenAPI) or call (MCP) that will leave Vex.
-  servicio: 'Servicio',
-  metodo: 'Método',
-  url: 'URL',
-  herramienta: 'Herramienta',
-  argumentos: 'Datos',
-};
-
+/**
+ * The host page: lists of the platform's records, the selection that becomes Vex's screen
+ * context, and the operator panel as one tag (<vex-assistant>), which draws the avatar the studio
+ * published for this host when the manifest names one.
+ */
 export function App() {
   const [users, setUsers] = useState<Principal[]>([]);
   const [auth, setAuth] = useState<{ token: string; principal: Principal } | null>(null);
   const [info, setInfo] = useState<OperatorInfo | null>(null);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [selected, setSelected] = useState<{ contactoId?: string; expedienteId?: string }>({});
-  const [draft, setDraft] = useState('');
   const [apiError, setApiError] = useState<string | null>(null);
+  const assistant = useRef<VexAssistantElement>(null);
 
   const refresh = useCallback(() => {
     if (!auth) return;
@@ -52,9 +29,6 @@ export function App() {
       .then(setEstado)
       .catch((e: Error) => setApiError(e.message));
   }, [auth]);
-
-  const op = useOperator(auth?.token ?? null, refresh);
-  const { state, viseme } = useVexDirector(op.phase, { greets: info?.personality.greets ?? true, talkMs: info?.personality.talkMs ?? 1600 });
 
   useEffect(() => {
     Promise.all([demoUsers(), fetchInfo()])
@@ -71,10 +45,25 @@ export function App() {
 
   useEffect(refresh, [refresh]);
 
-  const logRef = useRef<HTMLDivElement>(null);
+  // The panel gets the token through a function, never through the DOM; a turn that ends refreshes the lists.
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [op.turns, op.pending]);
+    const el = assistant.current;
+    if (!el) return undefined;
+    el.suggestions = SUGGESTIONS;
+    const onTurn = () => refresh();
+    el.addEventListener('vex-turn', onTurn);
+    return () => el.removeEventListener('vex-turn', onTurn);
+  }, [refresh]);
+
+  useEffect(() => {
+    const el = assistant.current;
+    if (!el || !auth) return;
+    const token = auth.token;
+    el.getToken = async () => token;
+    el.principal = auth.principal;
+    el.reset();
+    void el.refresh();
+  }, [auth]);
 
   const context = useMemo(() => {
     const ctx: Record<string, unknown> = { pantalla: selected.expedienteId ? 'expediente' : selected.contactoId ? 'contacto' : 'inicio' };
@@ -87,18 +76,12 @@ export function App() {
     return ctx;
   }, [selected, estado]);
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || op.busy) return;
-    setDraft('');
-    void op.send(text, context);
-  };
+  useEffect(() => {
+    if (assistant.current) assistant.current.context = context;
+  }, [context]);
 
   const switchUser = async (id: string) => {
-    const a = await login(id);
-    setAuth(a);
-    op.reset();
+    setAuth(await login(id));
   };
 
   const contactName = (id: string) => estado?.contactos.find((c) => c.id === id)?.nombre ?? id;
@@ -117,6 +100,12 @@ export function App() {
           {info && (
             <span className="pill" title="Proveedor del modelo">
               {info.provider === 'scripted' ? 'modo guion (sin clave)' : info.provider}
+            </span>
+          )}
+          {info?.host.manifest && (
+            <span className="pill" title="Manifiesto del host">
+              {info.host.name}
+              {info.host.avatar ? ' · avatar del estudio' : ''}
             </span>
           )}
           <label className="muted">
@@ -191,108 +180,7 @@ export function App() {
         </section>
 
         <aside className="vex">
-          <div className="vex-head">
-            <div className="avatar" aria-hidden="true">
-              <Vex state={state} viseme={viseme} height={AVATAR_H} title="" />
-            </div>
-            <div className="vex-meta">
-              <strong>{info?.personality.name ?? 'Vex'}</strong>
-              <span className="label" data-phase={op.phase}>
-                {PHASE_LABEL[op.phase]}
-              </span>
-              {auth && <span className="muted">actúa como {auth.principal.name}</span>}
-            </div>
-          </div>
-
-          <div className="log" ref={logRef}>
-            {op.turns.length === 0 && (
-              <div className="empty">
-                <p>Pídeme algo sobre la plataforma. Por ejemplo:</p>
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="suggestion" onClick={() => setDraft(s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-            {op.turns.map((turn) => (
-              <div key={turn.id} className="turn">
-                <div className="msg user">{turn.user}</div>
-                {turn.steps.length > 0 && (
-                  <ol className="steps">
-                    {turn.steps.map((s) => (
-                      <li key={s.id} className={`step is-${s.outcome}`}>
-                        <span className="step-dot" aria-hidden="true" />
-                        <span className="step-text">
-                          {s.summary}
-                          {s.outcome !== 'ok' && s.outcome !== 'pending' && s.detail && s.detail !== s.summary && <em> · {s.detail}</em>}
-                        </span>
-                        <span className="step-state">{OUTCOME_LABEL[s.outcome]}</span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {op.pending && !turn.done && (
-                  <div className="confirm" role="alertdialog" aria-labelledby={`c-${op.pending.id}`}>
-                    <p id={`c-${op.pending.id}`}>
-                      <strong>Necesito tu OK:</strong> {op.pending.summary}
-                    </p>
-                    {op.pending.details ? (
-                      <dl className="confirm-details">
-                        {Object.entries(op.pending.details).map(([key, value]) => (
-                          <div key={key} className={`confirm-row is-${key}`}>
-                            <dt>{DETAIL_LABEL[key] ?? key}</dt>
-                            <dd>{typeof value === 'string' ? value : JSON.stringify(value)}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : (
-                      <p className="muted">Parámetros: {JSON.stringify(op.pending.params)}</p>
-                    )}
-                    <p className="muted">Acción irreversible ({op.pending.tool}). Esto es lo que se enviará tal cual.</p>
-                    <div className="confirm-actions">
-                      <button type="button" className="btn primary" onClick={() => void op.decide(true)}>
-                        Aprobar
-                      </button>
-                      <button type="button" className="btn" onClick={() => void op.decide(false)}>
-                        Rechazar
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {turn.cancelled && <div className="msg vex is-stopped">Detenido. No he hecho nada más.</div>}
-                {!turn.cancelled && (turn.reply || turn.error) && <div className={`msg vex ${turn.error ? 'is-error' : ''}`}>{turn.error ?? turn.reply}</div>}
-              </div>
-            ))}
-          </div>
-
-          <form className="composer" onSubmit={submit}>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  submit(e);
-                }
-              }}
-              placeholder={auth ? `Dile a ${info?.personality.name ?? 'Vex'} qué hacer…` : 'Conectando…'}
-              rows={2}
-              disabled={!auth || op.busy}
-            />
-            {op.busy ? (
-              <button type="button" className="btn danger" onClick={() => void op.stop()}>
-                Detener
-              </button>
-            ) : (
-              <button type="submit" className="btn primary" disabled={!auth || !draft.trim()}>
-                Enviar
-              </button>
-            )}
-          </form>
-          <p className="hint">
-            Contexto que viaja con el mensaje: <code>{JSON.stringify(context)}</code>
-          </p>
+          <vex-assistant ref={assistant} api={API_URL} />
         </aside>
       </main>
     </div>

@@ -1,0 +1,30 @@
+{
+  "name": "@vex/assistant",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "<vex-assistant>: the embeddable operator panel (chat, steps, confirmation card) around the studio's <vex-avatar>, plus the registry of page elements Vex may know about.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./embed": "./src/embed.ts"
+  },
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vex/operator": "workspace:*",
+    "@vexstudio/format": "workspace:*",
+    "@vexstudio/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "jsdom": "30.1.3",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  }
+}

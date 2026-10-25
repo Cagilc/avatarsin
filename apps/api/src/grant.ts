@@ -1,5 +1,6 @@
-import { NO_GRANT, grantExpired, grantMatchesHost, grantSchema, signedGrantSchema, type Grant, type HostAvatar } from '@vex/operator';
-import { canonicalJson, fromBase64Url, importPublicKey } from '@vexstudio/format';
+import { NO_GRANT, grantExpired, grantMatchesHost, grantSchema, signedGrantSchema, type Grant, type HostAvatar, type VexPersonality } from '@vex/operator';
+import { canonicalJson, fromBase64Url, importPublicKey, verifyPackage } from '@vexstudio/format';
+import { personalityFromStudio } from './personality.ts';
 
 /**
  * The integration's grant: what the avatar's owner allowed this host to do, signed by the studio.
@@ -8,7 +9,14 @@ import { canonicalJson, fromBase64Url, importPublicKey } from '@vexstudio/format
  * short-lived, so a revoked integration stops working at the next refresh.
  */
 
-export type GrantState = { status: 'ok'; grant: Grant } | { status: 'unavailable' | 'invalid' | 'expired' | 'foreign'; reason: string };
+export type GrantState =
+  | {
+      status: 'ok';
+      grant: Grant;
+      /** How the published avatar talks, when its signed package could be read and verified too. */
+      personality?: VexPersonality;
+    }
+  | { status: 'unavailable' | 'invalid' | 'expired' | 'foreign'; reason: string };
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 
@@ -92,7 +100,13 @@ export class GrantClient {
         const res = await (this.opts.fetch ?? fetch)(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
         if (res.status === 404 || res.status === 403) next = { status: 'unavailable', reason: `El estudio ya no reconoce la integración (HTTP ${res.status}): revocada o inexistente.` };
         else if (!res.ok) next = { status: 'unavailable', reason: `El estudio respondió HTTP ${res.status}.` };
-        else next = await verifySignedGrant(await res.json(), this.opts.avatar, this.opts.domain, now);
+        else {
+          next = await verifySignedGrant(await res.json(), this.opts.avatar, this.opts.domain, now);
+          if (next.status === 'ok') {
+            const personality = await this.personality();
+            if (personality) next = { ...next, personality };
+          }
+        }
       } catch (err) {
         // The studio answered nothing at all: keep a grant that is still within its life, drop anything else.
         const reason = `No se pudo pedir el permiso al estudio: ${err instanceof Error ? err.message : String(err)}`;
@@ -102,5 +116,17 @@ export class GrantClient {
     this.checkedAt = now;
     this.state = next;
     return next;
+  }
+
+  /** The published package, verified with the same key: its personality shapes the prompt. Missing or invalid = none. */
+  private async personality(): Promise<VexPersonality | null> {
+    try {
+      const res = await (this.opts.fetch ?? fetch)(`${this.opts.avatar.endpoint.replace(/\/$/, '')}/package`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return null;
+      const verified = await verifyPackage(await res.json(), await importPublicKey(this.opts.avatar.publicKey), this.opts.avatar.keyId);
+      return verified.ok ? personalityFromStudio(verified.doc.personality) : null;
+    } catch {
+      return null;
+    }
   }
 }
