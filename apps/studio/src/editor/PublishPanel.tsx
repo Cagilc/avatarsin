@@ -80,8 +80,8 @@ export function PublishPanel({ avatarId, revision, published, publicUrl, runtime
         <h3>Integraciones</h3>
         <p className="hint">Cada integración es una clave ligada a los dominios que indiques. Otro sitio no puede mostrar el avatar, y puedes revocarla al momento.</p>
         <div className="key-form">
-          <input placeholder="Nombre (p. ej. Web de MNEE)" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} data-testid="key-label" />
-          <textarea placeholder={'Dominios, uno por línea\nhttps://app.minegocio.es'} rows={2} value={origins} onChange={(e) => setOrigins(e.target.value)} data-testid="key-origins" />
+          <input placeholder="Nombre (p. ej. Web del cliente)" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} data-testid="key-label" />
+          <textarea placeholder={'Dominios, uno por línea\nhttps://app.ejemplo.com'} rows={2} value={origins} onChange={(e) => setOrigins(e.target.value)} data-testid="key-origins" />
           <textarea placeholder="Herramientas que puede usar aquí (vacío = las del avatar)" rows={2} value={tools} onChange={(e) => setTools(e.target.value)} />
           <select value={maxRisk} onChange={(e) => setMaxRisk(e.target.value as EmbedKey['maxRisk'])}>
             {(Object.keys(RISK_LABEL) as EmbedKey['maxRisk'][]).map((r) => (

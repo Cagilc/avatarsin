@@ -1,6 +1,6 @@
 # Estudio de avatares Vex · diseño
 
-Herramienta **privada** para crear avatares animados a partir de un logo o una imagen: piezas, esqueleto, animaciones, física, materiales, personalidad y capacidades. Lo que sale del estudio es un **paquete firmado** que cualquier sistema (MNEE u otro SaaS) incrusta con `<vex-avatar>`, y que el operador de Vex puede usar con todo lo que sabe hacer.
+Herramienta **privada** para crear avatares animados a partir de un logo o una imagen: piezas, esqueleto, animaciones, física, materiales, personalidad y capacidades. Lo que sale del estudio es un **paquete firmado** que cualquier web o SaaS incrusta con `<vex-avatar>`, y que el operador de Vex puede usar con todo lo que sabe hacer.
 
 Estado: fase 1 hecha y probada en local. Sin remoto en GitHub hasta terminar de probarla.
 
