@@ -1,6 +1,6 @@
 # Workflow 02 · SDK de host y web component
 
-**Rama:** `wf/02-web-component`. **Requiere:** 01 fusionado. **Puede ir en paralelo con 04.**
+**Rama:** `wf/02-web-component`. **Requiere:** 01 fusionado. **Puede ir en paralelo con 04.** Si 04 se fusiona antes, este PR añade la bandeja de novedades y los botones al web component (ver «Costuras» en `00-protocolo.md`).
 
 ## Objetivo
 

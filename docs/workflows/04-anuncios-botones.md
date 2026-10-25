@@ -1,6 +1,6 @@
 # Workflow 04 · Anuncios, novedades y botones rápidos
 
-**Rama:** `wf/04-engage`. **Requiere:** 01 fusionado. **Puede ir en paralelo con 02.**
+**Rama:** `wf/04-engage`. **Requiere:** 01 fusionado. **Puede ir en paralelo con 02.** Pinta en la demo React; si el 02 ya está fusionado, añade también la bandeja y los botones al web component (ver «Costuras» en `00-protocolo.md`).
 
 ## Objetivo
 

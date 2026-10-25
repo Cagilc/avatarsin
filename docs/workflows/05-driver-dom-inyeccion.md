@@ -1,6 +1,6 @@
 # Workflow 05 · Driver DOM y defensa contra inyección
 
-**Revisión obligatoria con Fable** (amplía la superficie de ataque). **Rama:** `wf/05-dom`. **Requiere:** 02 fusionado. **Puede ir en paralelo con 03.**
+**Fable refina y revisa** (amplía la superficie de ataque: la revisión incluye un repaso de amenazas, no solo del diff). **Rama:** `wf/05-dom`. **Requiere:** 02 fusionado. **Puede ir en paralelo con 03.**
 
 ## Objetivo
 

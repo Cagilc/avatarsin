@@ -8,7 +8,7 @@ Un wizard visual: la mascota **se mueve y señala** elementos de la interfaz del
 
 ## Alcance
 
-1. **Contrato del tour** (Zod, en `packages/operator/src/schema/tour.ts`): pasos con `target` (id de elemento registrado), `say`, `pose`, `advanceOn` (`click` · `input` · `next` · `event:<nombre>` · `timeout`), `skippable`, y `when` (primera visita, rol, pantalla). Valida que cada `target` exista en el registro al arrancar el paso.
+1. **Contrato del tour** (Zod, en `packages/operator/src/schema/tour.ts`; sustituye el marcador `tours` de `schema/host.ts` con una línea): pasos con `target` (id de elemento registrado), `say`, `pose`, `advanceOn` (`click` · `input` · `next` · `event:<nombre>` · `timeout`), `skippable`, y `when` (primera visita, rol, pantalla). Valida que cada `target` exista en el registro al arrancar el paso.
 2. **Motor determinista** (`packages/tour`): máquina de estados sin dependencias de React ni de modelo; emite eventos que el *director* traduce a mascota y burbuja. Pausa, salir y reanudar.
 3. **Mascota que señala**: la mascota se desplaza hasta el borde del rectángulo del elemento y adopta la pose «señalar». Resalta el elemento con un halo que **no captura clics** y no lo tapa. Si el elemento no está a la vista, hace scroll con suavidad; si no existe, salta el paso y lo registra.
 4. **Poses nuevas, sin tocar el estilo**: `point` (señalar, 4 direcciones) y `celebrate-small`. Se añaden a `assets/vex-2d/vex-rig.json` y a `POSES` siguiendo la paleta y la geometría existentes; las poses actuales no cambian.

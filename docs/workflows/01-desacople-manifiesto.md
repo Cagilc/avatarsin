@@ -1,6 +1,6 @@
 # Workflow 01 · Desacople y manifiesto de host
 
-**Revisión obligatoria con Fable** (cambia contratos del núcleo). **Rama:** `wf/01-manifiesto`. **Bloquea a los demás.**
+**Fable refina y revisa** (cambia contratos del núcleo: revisión con especial atención a compatibilidad). **Rama:** `wf/01-manifiesto`. **Bloquea a los demás.**
 
 ## Objetivo
 
@@ -8,7 +8,7 @@ Sacar del núcleo todo lo que sea del negocio precargado y hacer que un host se 
 
 ## Alcance
 
-1. **Esquema del manifiesto** en `packages/operator/src/schema/host.ts` (Zod) + tests. Campos mínimos: `version`, `host{name,domain}`, `personality`, `theme`, `connectors[]`, `policy`, `screenContext` (JSON Schema), `features{tours,announcements,quickActions,domDriver}` (todo `false`), y marcadores reservados `quickActions`, `tours`, `announcements` (solo tipados aquí; los implementan 03 y 04). Esbozo en `docs/plan-host-agnostico.md`.
+1. **Esquema del manifiesto** en `packages/operator/src/schema/host.ts` (Zod) + tests. Campos mínimos: `version`, `host{name,domain}`, `personality`, `theme`, `connectors[]`, `policy`, `screenContext` (JSON Schema), `features{tours,announcements,quickActions,domDriver}` (todo `false`), y los marcadores `quickActions`, `tours`, `announcements` como `z.array(z.unknown()).default([])`: el 03 y el 04 los sustituyen por su esquema con una línea cada uno. Esbozo en `docs/plan-host-agnostico.md`.
 2. **Cargador** en `apps/api`: lee el manifiesto de una ruta (`VEX_HOST_MANIFEST`) o de un preset por nombre; error claro y exacto si es inválido; sin manifiesto, usa el preset actual (comportamiento de hoy).
 3. **Preset `presets/mnee/`**: mover allí, sin borrar nada, `tools/platform.ts`, `platform/mock.ts`, `platform/types.ts`, el modo guion del dominio (`providers/scripted.ts`), el contexto `{contactoId, expedienteId}` y sus casos de evals. El núcleo conserva solo la orden directa `usa <herramienta> {json}`.
 4. **`system.ts` neutro**: el prompt base no menciona contactos, expedientes ni correos; el dominio y los ejemplos entran desde `host.domain` y el preset.

@@ -1,5 +1,7 @@
 # Workflows · protocolo de ejecución
 
+Empieza por `README.md` (arranque en 10 minutos). Ideas adicionales priorizadas: `backlog.md`.
+
 Cinco workflows que llevan a Vex de «operador de un negocio concreto» a «asistente que se acopla a cualquier plataforma» (visión y razones: `docs/plan-host-agnostico.md`). Cada fichero `01…05` es un encargo **autocontenido** para un agente: se le pasa ese fichero, `CLAUDE.md` y nada más.
 
 ## Reparto
@@ -12,9 +14,12 @@ Cinco workflows que llevan a Vex de «operador de un negocio concreto» a «asis
 
 Dos pasadas por workflow, en este orden:
 
-1. **Refinado con Fable (una sola sesión corta, sin escribir código).** Lee el fichero del workflow y el código que cita, resuelve las «Decisiones abiertas», y escribe `specs/<NN>-<slug>.md` (≈30 líneas, formato Spec-Lite): decisiones tomadas, contratos Zod exactos, lista de ficheros a crear o tocar, casos de prueba. Si algo contradice el repo, corrige el fichero del workflow en el mismo PR.
+1. **Refinado con Fable (una sola sesión corta, sin escribir código).** Lee el fichero del workflow y el código que cita, **verifica cada ruta, nombre y afirmación contra el repo**, resuelve las «Decisiones abiertas» y escribe `specs/<NN>-<slug>.md` (≈30 líneas, formato Spec-Lite): decisiones tomadas, contratos Zod exactos, lista de ficheros a crear o tocar, casos de prueba. Si algo contradice el repo, corrige el fichero del workflow en el mismo PR.
 2. **Ejecución con Sonnet** siguiendo `specs/<NN>-<slug>.md`, en una rama `wf/<NN>-<slug>`. No rediseña: si el spec no cubre algo, para y pregunta (ver «Parar y preguntar»).
-3. **Revisión con Fable solo del diff** y **solo** en los workflows marcados «revisión obligatoria» (los que tocan seguridad o contratos). En el resto basta con las puertas automáticas.
+3. **Revisión con Fable del diff, en todos los workflows** (no solo en los de seguridad): contra el spec, los principios de `CLAUDE.md` y los criterios de «Hecho cuando». Es una pasada de solo lectura sobre el diff, no sobre el repo entero; devuelve hallazgos y Sonnet los arregla en el mismo PR.
+4. **Los propios planes también los revisa Fable**: este conjunto de documentos (`docs/plan-host-agnostico.md`, `docs/workflows/*`) se revisa con Fable **antes de empezar el 01**, y cada vez que un workflow cambie el plan.
+
+Fable decide y revisa; Sonnet escribe. Si Sonnet duda de un contrato o de una consecuencia de seguridad, vuelve a Fable en vez de decidir solo.
 
 ## Reglas comunes (todas obligatorias)
 
@@ -48,6 +53,13 @@ Parar y devolver una pregunta concreta, sin improvisar, si: hay que cambiar un c
 ## Carril de infra (Oscar, fuera de los cinco)
 
 Empaquetado en contenedor, manifiesto por inquilino seleccionado por el token, TLS y proxy, parada global, límite de gasto, `TokenService.verify` contra el JWT de un host real, conexión de un host real solo por manifiesto, y la prueba de aceptación «dos hosts, cero cambios de código». Depende de que 01 esté fusionado.
+
+## Costuras entre workflows
+
+- **01 deja marcadores, no contenidos.** En `schema/host.ts`, `tours`, `announcements` y `quickActions` son `z.array(z.unknown()).default([])`. El 03 y el 04 los sustituyen por su propio esquema con **una sola línea cada uno** en `host.ts`, para no chocar al fusionar.
+- **04 pinta en la demo React; el web component (02) no lo conoce aún.** Quien fusione **segundo** entre 02 y 04 añade la bandeja de novedades y los botones al web component como último paso de su PR.
+- **El enlace de un anuncio a un tour (`cta`) solo funciona si el 03 está fusionado.** Hasta entonces el 04 ignora ese tipo de enlace sin error.
+- **03 y 05 comparten el registro de elementos del 02.** Ninguno de los dos cambia su contrato; si lo necesitan, parar y preguntar.
 
 ## Informe de cada workflow
 

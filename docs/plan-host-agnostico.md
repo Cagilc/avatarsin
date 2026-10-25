@@ -51,7 +51,7 @@ Reglas: el manifiesto no puede ampliar lo que la revisión humana de conectores 
 
 ## Cómo se ejecuta
 
-Los hitos se han convertido en **cinco workflows** autocontenidos en `docs/workflows/` (protocolo, reparto de trabajo, modelo por fase y orden en `00-protocolo.md`). Correspondencia: hito 0 → workflow 01, hito 1 → 02, hito 2 → 03, hito 3 → 04, hito 4 → 05. El hito 5 (servidor y multi-inquilino) queda fuera: es el carril de infra de Oscar.
+Los hitos se han convertido en **cinco workflows** autocontenidos en `docs/workflows/` (protocolo, reparto de trabajo, modelo por fase y orden en `00-protocolo.md`). Correspondencia: hito 0 → workflow 01, hito 1 → 02, hito 2 → 03, hito 3 → 04, hito 4 → 05. Las revisiones de planes y de diffs las hace Fable; Sonnet escribe. Empezar por `docs/workflows/README.md`. El hito 5 (servidor y multi-inquilino) queda fuera: es el carril de infra de Oscar.
 
 ## Hitos
 
