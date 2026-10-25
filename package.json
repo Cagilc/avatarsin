@@ -1,0 +1,18 @@
+{
+  "name": "vex-avatar-studio",
+  "private": true,
+  "description": "Private studio to design Vex avatars (parts, skeleton, animation, physics, materials, personality, capabilities) and publish them as signed packages that any SaaS can embed.",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @vexstudio/server dev",
+    "dev:studio": "pnpm --filter @vexstudio/studio dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "e2e": "pnpm --filter @vexstudio/e2e e2e",
+    "user:add": "pnpm --filter @vexstudio/server user:add"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@vexstudio/server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The private studio server: accounts, drafts with history, sanitized assets, the assistant, signed publishing and embed keys.",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "user:add": "node src/cli/user-add.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.2.0",
+    "@vexstudio/format": "workspace:*",
+    "@xmldom/xmldom": "^0.9.8",
+    "fastify": "^5.12.7",
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}
