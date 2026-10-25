@@ -48,6 +48,8 @@ export interface Turn {
   id: string;
   user: string;
   reply: string;
+  /** What Vex Core said before answering (a cap reached, the AI paused). */
+  notices: string[];
   steps: Step[];
   error?: string;
   cancelled?: boolean;
@@ -536,7 +538,7 @@ export class VexAssistantElement extends HTMLElement {
   /** One turn of the conversation, whatever started it: the stream's events drive the log and the phases. */
   private async runTurn(text: string, start: (onEvent: (event: StreamEvent) => void) => Promise<void>): Promise<void> {
     const turnId = crypto.randomUUID();
-    const turn: Turn = { id: turnId, user: text, reply: '', steps: [], done: false };
+    const turn: Turn = { id: turnId, user: text, reply: '', notices: [], steps: [], done: false };
     this.turns.push(turn);
     this.busy = true;
     this.pending = null;
@@ -588,6 +590,10 @@ export class VexAssistantElement extends HTMLElement {
           this.pending = null;
           turn.cancelled = true;
           turn.done = true;
+          break;
+        case 'notice':
+          turn.notices.push(event.message);
+          this.emit('vex-notice', { message: event.message });
           break;
         case 'progress':
           break;
@@ -723,6 +729,7 @@ export class VexAssistantElement extends HTMLElement {
     }
     for (const turn of this.turns) {
       const box = h('div', { class: 'turn' }, h('div', { class: 'msg user' }, turn.user));
+      for (const n of turn.notices) box.appendChild(h('div', { class: 'msg notice', role: 'status' }, n));
       if (turn.steps.length > 0) {
         const ol = h('ol', { class: 'steps' });
         for (const s of turn.steps) {

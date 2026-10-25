@@ -29,6 +29,7 @@ Vex ejecuta acciones con consecuencias reales en nombre de una persona. Este doc
 | Que una herramienta reciba datos que su esquema no admite | Cada entrada se valida contra el JSON Schema de la herramienta antes de llamar al servicio; los parámetros de ruta se codifican. | `jsonSchema.ts`, `runtime.ts` | `connectors.test.ts` |
 | Texto hostil dentro de los datos (una nota que "ordena" enviar algo) | El system prompt lo declara dato; el banco de encargos tiene casos de inyección con notas, nombres y etiquetas hostiles que deben no producir acciones. Lo irreversible pide confirmación con el contenido real. | `system.ts`, `evals/cases.ts` | banco (con Claude) |
 | Un bucle que no para o se dispara en coste | Tope de 8 rondas y 25 acciones por mensaje; 20 mensajes por usuario y minuto; parada a petición y al cerrar la página; límite de 2 MB por especificación y de 8.000 caracteres por resultado. | `runner.ts`, `app.ts` | `runner.test.ts`, `app.test.ts` |
+| Que la factura del modelo se dispare (un usuario que no para, un mes que se descontrola, nadie que pueda frenarlo) | Cada respuesta del modelo se carga a la persona (tokens) y a la instalación (coste estimado) en SQLite. Topes **encendidos por defecto**: 300.000 tokens por persona y día UTC, 50 USD por instalación y mes UTC (`VEX_LIMIT_*`, 0 los quita); aviso al 80 %; al tope, Vex sigue en modo guion y lo dice en el flujo (`notice`). Los administradores ven las cifras en `GET /admin/spend` y pausan la IA (modo guion) o todo Vex (503) con `POST /admin/pause`; la pausa sobrevive al reinicio y queda en la auditoría. | `apps/api/src/spend.ts`, `app.ts` | `spend.test.ts` |
 | Leer conversaciones o auditoría de otro usuario | Sesiones ligadas al principal (403 si otro intenta continuarla); auditoría filtrada por usuario. | `sessions.ts`, `app.ts` | `app.test.ts` |
 | Que la clave del modelo salga del servidor | Solo el servidor habla con Anthropic. El proxy para Vex Studio no exige token, así que solo se activa en local (`VEX_PROVIDER_PROXY`). | `app.ts`, `server.ts` | `app.test.ts` |
 
@@ -38,8 +39,6 @@ Vex ejecuta acciones con consecuencias reales en nombre de una persona. Este doc
 - **TLS y proxy inverso** delante de Vex Core; `HOST=0.0.0.0` solo detrás de él.
 - **Secretos fuera de `.env`** en producción (gestor de secretos o variables del despliegue), y rotación de `VEX_TOKEN_SECRET`.
 - **Medir la inyección con Claude.** Los casos del banco existen; el acierto real no se ha medido porque no hay clave en este equipo.
-- **Límite de gasto** en dinero por usuario y por día, además del de mensajes.
-- **Parada global** para administradores: apagar todos los conectores o todo Vex con un interruptor.
 - **Registro de auditoría inmutable** (hoy es una tabla SQLite con permisos del proceso) y alertas sobre denegaciones repetidas.
 - **Revisión externa.** Este documento lo escribió quien escribió el código; una prueba de intrusión independiente antes de abrirlo a usuarios reales.
 

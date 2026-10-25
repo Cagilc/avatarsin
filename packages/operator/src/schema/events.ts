@@ -40,5 +40,7 @@ export const operatorEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), message: z.string() }),
   /** The user stopped the run; every pending action was closed as cancelled. */
   z.object({ type: z.literal('cancelled') }),
+  /** Something the host should show the person before the reply (a usage cap reached, the AI paused). */
+  z.object({ type: z.literal('notice'), message: z.string().min(1) }),
 ]);
 export type OperatorEvent = z.infer<typeof operatorEventSchema>;

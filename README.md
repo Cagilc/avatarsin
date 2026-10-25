@@ -75,7 +75,7 @@ pnpm dev:studio          # http://localhost:5180 (entrada de desarrollo solo en 
 
 En local no hace falta configurar nada más: el login de demo y el proxy del modelo se activan solos cuando el servidor escucha en `127.0.0.1`. Para un servidor público, copia `apps/api/.env.example` a `apps/api/.env` y rellena al menos `CORS_ORIGIN` (las páginas que pueden llamar a Vex) y `VEX_TOKEN_SECRET`; `docs/seguridad.md` lista el resto.
 
-Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador determinista por palabras clave que ejecuta peticiones como "Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación", pero no conversa. Para usar Claude, copia `apps/api/.env.example` a `apps/api/.env` y pon la clave; el modelo por defecto es `claude-opus-5-5`.
+Con clave, los topes de uso vienen puestos de serie (300.000 tokens por persona y día, 50 USD por instalación y mes; `VEX_LIMIT_*` en `.env.example`): al tope Vex sigue en modo guion y lo dice, y un administrador puede pausar la IA o todo Vex (`POST /admin/pause`). Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador determinista por palabras clave que ejecuta peticiones como "Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación", pero no conversa. Para usar Claude, copia `apps/api/.env.example` a `apps/api/.env` y pon la clave; el modelo por defecto es `claude-opus-5-5`.
 
 Comprobaciones:
 

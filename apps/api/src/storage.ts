@@ -15,6 +15,24 @@ export type StoredAnnouncement = Announcement & {
   publishedBy?: string;
 };
 
+/** One completion's tokens and estimated cost, charged to a person. */
+export interface SpendRecord {
+  ts: string;
+  principalId: string;
+  model: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  usd: number;
+}
+
+export interface SpendTotal {
+  tokens: number;
+  usd: number;
+  calls: number;
+}
+
 export interface StoredSession {
   id: string;
   principal: Principal;
@@ -49,6 +67,13 @@ export interface OperatorStore {
   /** Ids of the tours this person completed. */
   doneTours(principalId: string): string[];
   markTourDone(principalId: string, tourId: string): void;
+  recordSpend(record: SpendRecord): void;
+  /** Totals since an instant (ISO), for everyone or for one person. */
+  spendSince(sinceIso: string, principalId?: string): SpendTotal;
+  spendByPrincipalSince(sinceIso: string): Array<SpendTotal & { principalId: string }>;
+  /** Small named values that must survive a restart (the pause switch). */
+  getSetting(key: string): string | null;
+  setSetting(key: string, value: string | null): void;
   close(): void;
 }
 
@@ -128,7 +153,37 @@ export class MemoryStore implements OperatorStore {
     this.tours.set(principalId, set);
   }
 
+  readonly spend: SpendRecord[] = [];
+  private readonly settings = new Map<string, string>();
+
+  recordSpend(record: SpendRecord): void {
+    this.spend.push({ ...record });
+  }
+
+  spendSince(sinceIso: string, principalId?: string): SpendTotal {
+    return sum(this.spend.filter((r) => r.ts >= sinceIso && (principalId === undefined || r.principalId === principalId)));
+  }
+
+  spendByPrincipalSince(sinceIso: string): Array<SpendTotal & { principalId: string }> {
+    const by = new Map<string, SpendRecord[]>();
+    for (const r of this.spend) if (r.ts >= sinceIso) by.set(r.principalId, [...(by.get(r.principalId) ?? []), r]);
+    return [...by].map(([principalId, rows]) => ({ principalId, ...sum(rows) })).sort((a, b) => b.tokens - a.tokens);
+  }
+
+  getSetting(key: string): string | null {
+    return this.settings.get(key) ?? null;
+  }
+
+  setSetting(key: string, value: string | null): void {
+    if (value === null) this.settings.delete(key);
+    else this.settings.set(key, value);
+  }
+
   close(): void {}
+}
+
+function sum(rows: SpendRecord[]): SpendTotal {
+  return rows.reduce((t, r) => ({ tokens: t.tokens + r.input + r.output + r.cacheRead + r.cacheWrite, usd: t.usd + r.usd, calls: t.calls + 1 }), { tokens: 0, usd: 0, calls: 0 });
 }
 
 /**
@@ -152,6 +207,13 @@ export class SqliteStore implements OperatorStore {
   private readonly insertSeen: StatementSync;
   private readonly selectToursDone: StatementSync;
   private readonly insertTourDone: StatementSync;
+  private readonly insertSpend: StatementSync;
+  private readonly sumSpend: StatementSync;
+  private readonly sumSpendByPrincipal: StatementSync;
+  private readonly sumSpendPerPrincipal: StatementSync;
+  private readonly selectSetting: StatementSync;
+  private readonly upsertSetting: StatementSync;
+  private readonly deleteSetting: StatementSync;
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -198,6 +260,23 @@ export class SqliteStore implements OperatorStore {
         done_at text not null,
         primary key (principal_id, tour_id)
       );
+      create table if not exists spend (
+        id integer primary key,
+        ts text not null,
+        principal_id text not null,
+        model text not null,
+        input integer not null,
+        output integer not null,
+        cache_read integer not null,
+        cache_write integer not null,
+        usd real not null
+      );
+      create index if not exists spend_ts on spend (ts);
+      create index if not exists spend_principal_ts on spend (principal_id, ts);
+      create table if not exists settings (
+        key text primary key,
+        value text not null
+      );
     `);
     this.insertAudit = this.db.prepare('insert into audit (ts, session_id, principal_id, tool, outcome, entry) values (?, ?, ?, ?, ?, ?)');
     this.auditBySession = this.db.prepare('select entry from audit where principal_id = ? and session_id = ? order by id desc limit ?');
@@ -221,6 +300,14 @@ export class SqliteStore implements OperatorStore {
     this.insertSeen = this.db.prepare('insert or ignore into announcement_seen (principal_id, announcement_id, seen_at) values (?, ?, ?)');
     this.selectToursDone = this.db.prepare('select tour_id from tour_done where principal_id = ?');
     this.insertTourDone = this.db.prepare('insert or ignore into tour_done (principal_id, tour_id, done_at) values (?, ?, ?)');
+    this.insertSpend = this.db.prepare('insert into spend (ts, principal_id, model, input, output, cache_read, cache_write, usd) values (?, ?, ?, ?, ?, ?, ?, ?)');
+    const totals = 'coalesce(sum(input + output + cache_read + cache_write), 0) as tokens, coalesce(sum(usd), 0) as usd, count(*) as calls';
+    this.sumSpend = this.db.prepare(`select ${totals} from spend where ts >= ?`);
+    this.sumSpendByPrincipal = this.db.prepare(`select ${totals} from spend where ts >= ? and principal_id = ?`);
+    this.sumSpendPerPrincipal = this.db.prepare(`select principal_id, ${totals} from spend where ts >= ? group by principal_id order by tokens desc`);
+    this.selectSetting = this.db.prepare('select value from settings where key = ?');
+    this.upsertSetting = this.db.prepare('insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value');
+    this.deleteSetting = this.db.prepare('delete from settings where key = ?');
   }
 
   recordAudit(entry: AuditEntry): void {
@@ -281,6 +368,29 @@ export class SqliteStore implements OperatorStore {
 
   markTourDone(principalId: string, tourId: string): void {
     this.insertTourDone.run(principalId, tourId, new Date().toISOString());
+  }
+
+  recordSpend(r: SpendRecord): void {
+    this.insertSpend.run(r.ts, r.principalId, r.model, r.input, r.output, r.cacheRead, r.cacheWrite, r.usd);
+  }
+
+  spendSince(sinceIso: string, principalId?: string): SpendTotal {
+    const row = (principalId === undefined ? this.sumSpend.get(sinceIso) : this.sumSpendByPrincipal.get(sinceIso, principalId)) as { tokens: number; usd: number; calls: number };
+    return { tokens: Number(row.tokens), usd: Number(row.usd), calls: Number(row.calls) };
+  }
+
+  spendByPrincipalSince(sinceIso: string): Array<SpendTotal & { principalId: string }> {
+    return (this.sumSpendPerPrincipal.all(sinceIso) as Array<{ principal_id: string; tokens: number; usd: number; calls: number }>).map((r) => ({ principalId: r.principal_id, tokens: Number(r.tokens), usd: Number(r.usd), calls: Number(r.calls) }));
+  }
+
+  getSetting(key: string): string | null {
+    const row = this.selectSetting.get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  setSetting(key: string, value: string | null): void {
+    if (value === null) this.deleteSetting.run(key);
+    else this.upsertSetting.run(key, value);
   }
 
   close(): void {

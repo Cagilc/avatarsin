@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
-import { DirectProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
+import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
@@ -12,6 +12,7 @@ import { GrantClient, type GrantState } from './grant.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
 import { SessionStore } from './sessions.ts';
+import { SpendMeter, capNotice, warnNotice, type SpendLimits } from './spend.ts';
 import { MemoryStore, type OperatorStore } from './storage.ts';
 import { DEFAULT_HOST_NAME, DEFAULT_PERSONALITY, buildSystemPrompt } from './system.ts';
 import { platformTools } from './tools/platform.ts';
@@ -35,6 +36,12 @@ export interface AppOptions {
   grant?: { fetch?: typeof fetch; now?: () => number; refreshMs?: number };
   /** Path of the built <vex-assistant> script (packages/assistant/dist/vex-assistant.js), served at GET /assistant.js. */
   assistantBundle?: string;
+  /** Caps on model usage (tokens per person and day, USD per installation and month). Default: DEFAULT_LIMITS, on. */
+  spendLimits?: Partial<SpendLimits>;
+  /** What runs when a cap is reached or the AI is paused. Default: the scripted planner. */
+  fallbackProvider?: ModelProvider;
+  /** Clock for the spend meter (tests). */
+  now?: () => number;
   /**
    * Pages allowed to call Vex Core from a browser, as exact origins (scheme://host:port).
    * Any other origin gets no CORS headers and a 403 on state-changing requests. Empty = browsers blocked.
@@ -115,6 +122,10 @@ const runBody = z.object({
 
 const publishBody = z.object({ title: z.string().min(1).max(120).optional(), body: z.string().min(1).max(2000).optional() });
 
+/** `ai`: the model stops, scripted mode goes on; `all`: Vex answers nothing; null: running. */
+const pauseBody = z.object({ mode: z.enum(['ai', 'all']).nullable() });
+type PauseMode = 'ai' | 'all' | null;
+
 const demoLoginBody = z.object({ userId: z.string().min(1) });
 
 /** A neutral completion request from a host that runs the loop itself (Vex Studio). */
@@ -184,6 +195,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const allowedOrigins = opts.allowedOrigins ?? [];
   /** Connectors the manifest proposed at start and what became of each. */
   const proposals: Array<{ id: string; status: 'proposed' | 'existing' | 'failed'; error?: string }> = [];
+  const meter = new SpendMeter(store, opts.spendLimits ?? {}, opts.now);
+  const fallback = opts.fallbackProvider ?? new ScriptedProvider();
+  const pauseMode = (): PauseMode => {
+    const v = store.getSetting('pause');
+    return v === 'ai' || v === 'all' ? v : null;
+  };
 
   const principalOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
     const principal = tokens.verify(bearer(req.headers.authorization));
@@ -226,6 +243,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         ...(manifest?.avatar ? { avatar: manifest.avatar } : {}),
       },
       grant: state === null ? { status: 'none' } : state.status === 'ok' ? { status: 'ok', tools: state.grant.tools, maxRisk: state.grant.maxRisk, expiresAt: state.grant.expiresAt } : state,
+      pause: pauseMode(),
+      limits: meter.limits,
       tools: (await currentTools()).map((t) => ({ name: t.name, driver: t.driver, risk: t.risk, description: t.description })),
     };
   });
@@ -267,13 +286,34 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   }
 
   // --- Operator ---
-  /** One operator run streamed over SSE: a chat message, or a quick action through the very same loop. */
-  const streamRun = async (req: FastifyRequest, reply: FastifyReply, principal: Principal, body: { sessionId?: string | undefined; context?: Record<string, unknown> | undefined }, run: { userMessage: string; provider: ModelProvider }) => {
+  /**
+   * One operator run streamed over SSE: a chat message, or a quick action through the very same
+   * loop. `ai` says whether the run asks the model: those runs are metered and fall back to
+   * scripted mode past a cap or under a pause, with a notice at the head of the stream.
+   */
+  const streamRun = async (req: FastifyRequest, reply: FastifyReply, principal: Principal, body: { sessionId?: string | undefined; context?: Record<string, unknown> | undefined }, run: { userMessage: string; provider: ModelProvider; ai: boolean }) => {
+    if (pauseMode() === 'all') return reply.code(503).send({ error: 'Vex está en pausa por un administrador.' });
     let session;
     try {
       session = sessions.getOrCreate(body.sessionId, principal);
     } catch (err) {
       return reply.code(403).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    let provider = run.provider;
+    const notices: string[] = [];
+    if (run.ai && run.provider.name !== 'scripted') {
+      const status = meter.status(principal);
+      if (pauseMode() === 'ai') {
+        provider = fallback;
+        notices.push(capNotice('pause'));
+      } else if (status.blocked) {
+        provider = fallback;
+        notices.push(capNotice(status.blocked));
+      } else {
+        provider = meter.metered(run.provider, principal);
+        const warning = warnNotice(status);
+        if (warning) notices.push(warning);
+      }
     }
     if (session.busy) return reply.code(409).send({ error: 'La sesión ya está procesando un mensaje.' });
     if (!limiter.take(`user:${principal.id}`)) return reply.code(429).send({ error: 'Has enviado muchos mensajes seguidos; espera un minuto.' });
@@ -298,11 +338,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       if (!reply.raw.writableEnded) reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
     };
     send({ type: 'session', sessionId: session.id });
+    for (const message of notices) send({ type: 'notice', message });
 
     try {
       await runOperator({
         sessionId: session.id,
-        provider: run.provider,
+        provider,
         tools: await currentTools(),
         policy,
         principal,
@@ -332,7 +373,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (!principal) return undefined;
     const body = chatBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
-    return streamRun(req, reply, principal, body.data, { userMessage: body.data.message, provider: opts.provider });
+    return streamRun(req, reply, principal, body.data, { userMessage: body.data.message, provider: opts.provider, ai: true });
+  });
+
+  // --- Spend and the pause switch: administrators ---
+  app.get('/admin/spend', async (req, reply) => {
+    if (!adminOf(req, reply)) return undefined;
+    return { ...meter.report(), pause: pauseMode() };
+  });
+
+  app.post('/admin/pause', async (req, reply) => {
+    const principal = adminOf(req, reply);
+    if (!principal) return undefined;
+    const body = pauseBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'mode: "ai", "all" o null.' });
+    store.setSetting('pause', body.data.mode);
+    auditAdmin(principal, 'pausar_vex', { modo: body.data.mode }, body.data.mode === 'all' ? 'Pausar todo Vex' : body.data.mode === 'ai' ? 'Pausar la IA (modo guion)' : 'Reanudar Vex');
+    return { pause: body.data.mode };
   });
 
   // --- Announcements and quick actions: presentation data, served by the role in the token ---
@@ -378,14 +435,14 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const id = (req.params as { id: string }).id;
     const action = engage.quickActionsOn ? engage.quickAction(id) : undefined;
     if (!action || applicable([action], { role: principal.role, nowMs: Date.now() }).length === 0) return reply.code(404).send({ error: 'No hay ningún botón con ese id para ti.' });
-    if (action.tool === undefined) return streamRun(req, reply, principal, body.data, { userMessage: action.prompt ?? action.label, provider: opts.provider });
+    if (action.tool === undefined) return streamRun(req, reply, principal, body.data, { userMessage: action.prompt ?? action.label, provider: opts.provider, ai: true });
     const tool = action.tool;
     if (!(await currentTools()).some((t) => t.name === tool)) {
       const reason = `La política no permite ${tool}.`;
       store.recordAudit({ ts: new Date().toISOString(), sessionId: body.data.sessionId ?? 'boton', principal, actionId: crypto.randomUUID(), tool, driver: 'platform', risk: 'read', params: action.params ?? {}, summary: `Botón «${action.label}»`, outcome: 'denied', error: reason, durationMs: 0 });
       return reply.code(403).send({ error: reason });
     }
-    return streamRun(req, reply, principal, body.data, { userMessage: `Botón: ${action.label}`, provider: new DirectProvider({ tool, params: action.params ?? {}, label: action.label }) });
+    return streamRun(req, reply, principal, body.data, { userMessage: `Botón: ${action.label}`, provider: new DirectProvider({ tool, params: action.params ?? {}, label: action.label }), ai: false });
   });
 
   app.post('/operator/confirm', async (req, reply) => {

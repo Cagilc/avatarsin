@@ -127,6 +127,11 @@ Mejoras:
 - Backlog de Oscar en su orden: aprobaciones por canal, de sesión real a caso del banco, analítica de onboarding, «¿cómo hago X?».
 - Estudio: generación de avatares con Claude en SVG, imagen a piezas (PhotoCraft/VectorCraft), editor de animación, malla (EffectCraft a wasm).
 - Producción según la decisión 2: contenedor que instala cada cliente, con su clave y sus límites (decisión 4).
+- **Hecho el 2026-10-26** (adelantado mientras llega la clave), rama local `wf/07-limites`: **límites de gasto y pausa global** (decisión 4). Puertas: tipado OK, 225 pruebas (operator 44, format 22, runtime 12, connectors 16, server 32, api 84, assistant 15), banco 15/15, e2e 9/9 y 8/8, `salud.js` limpio. Decisiones tomadas al hacerlo:
+  - Medición por respuesta del modelo (tokens y coste estimado con `pricing.ts`, compartido con el banco), cargada a la persona y a la instalación; en SQLite. Botones con herramienta y modo guion no se miden.
+  - Topes encendidos por defecto: 300.000 tokens por persona y día UTC, 50 USD por instalación y mes UTC; aviso al 80 %; `0` quita un tope. Al tope o en pausa, la petición corre en modo guion y el flujo lo dice con el evento nuevo `notice` (aditivo en el contrato de eventos; el panel lo enseña).
+  - Pausa de administrador persistente (`settings`): `ai` (modo guion) o `all` (503 en chat y botones); auditada.
+  - Pendiente del paso 7 sin clave: «de sesión real a caso del banco» y «aprobaciones por canal».
 
 ### Cuándo están pulidas las bases
 Un avatar del estudio opera en la demo con su personalidad y sus permisos; el banco con Claude supera el mínimo; la documentación cuenta lo que hay. Entonces se deciden repositorio y licencia y se publica.

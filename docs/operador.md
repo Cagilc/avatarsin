@@ -108,6 +108,17 @@ Lo que un host enseña a sus usuarios **sin modelo**: novedades y accesos rápid
 
 **En el panel.** `<vex-assistant>` pide anuncios y botones al conectar: los no vistos salen en una bandeja al principio de la conversación (texto plano, construido como nodos de texto: nunca HTML), con su acción (`cta`: un botón rápido o un enlace https) y «Entendido»; los botones van en una fila sobre el cuadro de texto. Un botón de prompt es `send(prompt)`; uno de herramienta, `runQuickAction(id)`. `presets/demo-negocio` trae tres botones y un anuncio de bienvenida. Pruebas: `apps/api/src/engage.test.ts` (por HTTP: rol, visto una vez, botón por el bucle con confirmación real, botón denegado, borradores) y el e2e de la página simple.
 
+## Límites de gasto y pausa (decisión 4 del plan maestro)
+
+Cada cliente paga la IA con su clave, y Vex trae los frenos puestos de serie (`apps/api/src/spend.ts`):
+
+- **Medición.** Cada respuesta del modelo se carga a la persona que la pidió (tokens: entrada, salida y caché) y a la instalación (coste estimado con la tabla de precios de `pricing.ts`, la misma que usa el banco). Se guarda en SQLite (`spend`) y sobrevive al reinicio. Los botones con herramienta no consultan el modelo y no se miden; una instalación en modo guion tampoco.
+- **Topes, encendidos por defecto**: 300.000 tokens por persona y día (UTC) y 50 USD por instalación y mes (UTC). `VEX_LIMIT_USER_DAY_TOKENS`, `VEX_LIMIT_MONTH_USD` y `VEX_WARN_RATIO` (0,8) los ajustan; `0` quita un tope.
+- **Al 80 %**, la respuesta lleva un aviso; **al tope**, la petición se ejecuta en modo guion y el flujo lo dice. Los dos llegan como evento `notice` del SSE, antes de la respuesta; `<vex-assistant>` lo enseña como una línea de aviso en el turno.
+- **Pausa** para administradores: `POST /admin/pause {"mode":"ai"}` deja a Vex en modo guion; `"all"` responde 503 a chat y botones; `null` reanuda. Persiste en el almacén (`settings`) y queda en la auditoría (`pausar_vex`). `GET /admin/spend` da el mes (coste, llamadas, tope), el día por persona y los topes; `GET /operator/info` expone `pause` y `limits`.
+
+Pruebas: `apps/api/src/spend.test.ts` (sumas por día y mes UTC, aviso y bloqueo, persistencia SQLite, el modelo no se consulta al tope, pausa `ai`/`all`/reanudar, auditoría).
+
 ## Tours con la mascota (paso 5 del plan maestro)
 
 Un recorrido guiado por la página, **sin modelo**: la mascota sale del panel, se coloca junto a un elemento registrado, lo señala y explica; la persona avanza, o el paso avanza solo cuando pulsa o escribe en el elemento. Se declara en el manifiesto (`tours`, esquema en `packages/operator/src/schema/tour.ts`) y solo se sirve con `features.tours`.

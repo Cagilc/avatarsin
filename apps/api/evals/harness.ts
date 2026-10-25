@@ -5,18 +5,12 @@ import { createCitasApp, citasOpenApi } from '@vex/sample-tools';
 import { DEMO_USERS } from '../src/auth.ts';
 import { ConnectorRegistry } from '../src/connectors.ts';
 import { loadHostManifest } from '../src/host.ts';
+import { costOf, type Usage } from '../src/pricing.ts';
 import { MemoryStore } from '../src/storage.ts';
 import { MockPlatform } from '../src/platform/mock.ts';
 import { DEFAULT_PERSONALITY, buildSystemPrompt } from '../src/system.ts';
 import { platformTools } from '../src/tools/platform.ts';
 import type { Category, EvalCase } from './cases.ts';
-
-export interface Usage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
 
 export interface CaseResult {
   id: string;
@@ -49,19 +43,7 @@ export interface Report {
   cases: CaseResult[];
 }
 
-/** USD per million tokens. Only for the cost estimate in the report. */
-const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
-  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
-  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-};
-
-export function costOf(providerName: string, usage: Usage): number {
-  const model = providerName.replace(/^anthropic:/, '');
-  const p = PRICES[model];
-  if (!p) return 0;
-  return (usage.input * p.input + usage.output * p.output + usage.cacheRead * p.cacheRead + usage.cacheWrite * p.cacheWrite) / 1_000_000;
-}
+export { costOf, type Usage };
 
 /** Wraps a provider to add up the token usage it reports. */
 class Metered implements ModelProvider {

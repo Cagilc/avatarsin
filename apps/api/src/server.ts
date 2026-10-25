@@ -54,6 +54,12 @@ const app = buildApp({
   tokens,
   demoLogin,
   rateLimit: { messages: Number(env['VEX_RATE_LIMIT'] ?? 20), windowMs: 60_000 },
+  // Model usage caps, on by default: tokens per person and day, USD per installation and month. 0 = no cap.
+  spendLimits: {
+    ...(env['VEX_LIMIT_USER_DAY_TOKENS'] !== undefined ? { userDayTokens: Number(env['VEX_LIMIT_USER_DAY_TOKENS']) } : {}),
+    ...(env['VEX_LIMIT_MONTH_USD'] !== undefined ? { monthUsd: Number(env['VEX_LIMIT_MONTH_USD']) } : {}),
+    ...(env['VEX_WARN_RATIO'] !== undefined ? { warnRatio: Number(env['VEX_WARN_RATIO']) } : {}),
+  },
   // The model proxy spends the key without a user token: only on a local server, unless forced.
   enableProviderProxy: env['VEX_PROVIDER_PROXY'] === '1' || (env['VEX_PROVIDER_PROXY'] !== '0' && loopback),
   // Connector secrets are read from the environment by name (e.g. CITAS_TOKEN); never stored.
