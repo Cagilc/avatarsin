@@ -1,0 +1,13 @@
+{
+  "format": "vex-host",
+  "version": 1,
+  "host": { "name": "Demo Negocio", "domain": "demo-negocio.example" },
+  "screenContext": {
+    "pantalla": { "description": "Vista que el usuario tiene abierta: inicio, contacto, expediente, tareas o correos." },
+    "contactoId": { "description": "Id del contacto abierto, p. ej. c-002." },
+    "contactoEmail": { "description": "Correo del contacto abierto." },
+    "expedienteId": { "description": "Referencia del expediente abierto, p. ej. EXP-2026-041." }
+  },
+  "policy": { "allow": ["platform:*", "api:*", "mcp:*"], "deny": [], "confirm": ["irreversible"] },
+  "features": { "tours": false, "announcements": false, "quickActions": false, "domDriver": false }
+}

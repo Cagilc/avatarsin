@@ -47,6 +47,8 @@ export interface StudioOptions {
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const PROPOSAL_TTL_MS = 30 * 60_000;
 const RISK_ORDER: Record<Risk, number> = { read: 0, write: 1, irreversible: 2 };
+/** Life of an integration grant: the host's backend asks again after this, so a revocation lands fast. */
+const GRANT_TTL_MS = 10 * 60_000;
 
 const loginBody = z.strictObject({ email: z.string().max(200), password: z.string().max(200) });
 const createBody = z.strictObject({ name: z.string().trim().min(1).max(80) });
@@ -422,7 +424,8 @@ export function buildApp(opts: StudioOptions): FastifyInstance {
   /**
    * For the host's backend (e.g. Vex Core): what this integration may do, signed by the studio.
    * Tools are the intersection of the avatar's capabilities and the key's ceiling; the risk is the
-   * lower of both. An integration can only narrow what the owner approved.
+   * lower of both. An integration can only narrow what the owner approved. The grant expires
+   * soon (GRANT_TTL_MS): the host's backend asks again, so a revoked key stops working within minutes.
    */
   app.get<{ Params: { key: string } }>('/v1/embed/:key/grant', async (req, reply) => {
     const gate = embedGate(req, reply);
@@ -432,7 +435,17 @@ export function buildApp(opts: StudioOptions): FastifyInstance {
     const caps = parsed.doc.capabilities;
     const tools = gate.key.tools ? caps.tools.filter((t) => gate.key.tools!.includes(t)) : caps.tools;
     const maxRisk = RISK_ORDER[gate.key.maxRisk] < RISK_ORDER[caps.maxRisk] ? gate.key.maxRisk : caps.maxRisk;
-    const grant = { integration: gate.key.id, avatarId: gate.key.avatarId, revision: gate.pkg.revision, origins: gate.key.origins, tools, maxRisk, issuedAt: new Date().toISOString() };
+    const issued = Date.now();
+    const grant = {
+      integration: gate.key.id,
+      avatarId: gate.key.avatarId,
+      revision: gate.pkg.revision,
+      origins: gate.key.origins,
+      tools,
+      maxRisk,
+      issuedAt: new Date(issued).toISOString(),
+      expiresAt: new Date(issued + GRANT_TTL_MS).toISOString(),
+    };
     void reply.header('cache-control', 'no-cache');
     return { grant, signature: await signer.sign(grant), keyId: signer.keyId };
   });

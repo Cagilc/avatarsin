@@ -96,7 +96,7 @@ El sitio cambia el atributo `state` para que hable, piense o salude; el elemento
 3. **Editor de animación**: línea de tiempo con claves por pieza.
 4. **Visemas y caras** como en el avatar Vex (bocas por fonema, ojos).
 5. **Asistente con visión**: enviar una imagen del avatar a Claude para que razone sobre lo que ve.
-6. **Puente con el operador** (`avataarsin`): que Vex Core lea el *grant* firmado y limite las herramientas por integración.
+6. **Puente con el operador**: hecho en el paso 1 del plan maestro. Vex Core lee el *grant* firmado (`apps/api/src/grant.ts`), lo verifica con la clave pública que fija el manifiesto del host y limita las herramientas por integración. El *grant* lleva `expiresAt` (10 minutos) para que una revocación llegue rápido al operador.
 7. **Despliegue**: Docker, `STUDIO_SIGNING_KEY` en un gestor de secretos, copias de seguridad del SQLite.
 
 Obligaciones al reutilizar ArtCraft (Apache-2.0): conservar LICENSE y NOTICE, marcar los archivos modificados y no usar la marca ArtCraft.

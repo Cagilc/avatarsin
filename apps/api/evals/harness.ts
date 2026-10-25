@@ -4,9 +4,10 @@ import { runOperator, type AnyTool, type AuditEntry, type Completion, type Compl
 import { createCitasApp, citasOpenApi } from '@vex/sample-tools';
 import { DEMO_USERS } from '../src/auth.ts';
 import { ConnectorRegistry } from '../src/connectors.ts';
+import { loadHostManifest } from '../src/host.ts';
 import { MemoryStore } from '../src/storage.ts';
 import { MockPlatform } from '../src/platform/mock.ts';
-import { DEFAULT_HOST_NAME, DEFAULT_PERSONALITY, buildSystemPrompt } from '../src/system.ts';
+import { DEFAULT_PERSONALITY, buildSystemPrompt } from '../src/system.ts';
 import { platformTools } from '../src/tools/platform.ts';
 import type { Category, EvalCase } from './cases.ts';
 
@@ -94,7 +95,10 @@ function isSubsequence(needle: string[], hay: string[]): boolean {
 }
 
 const FIXED_NOW = () => new Date('2026-10-23T10:00:00.000Z');
-const SYSTEM = buildSystemPrompt(DEFAULT_PERSONALITY, DEFAULT_HOST_NAME);
+/** The bank runs as the demo host: its manifest names the platform and describes the screen context. */
+const DEMO = loadHostManifest('demo-negocio');
+const HOST = { name: DEMO.host.name, screenContext: DEMO.screenContext };
+const SYSTEM = buildSystemPrompt(DEFAULT_PERSONALITY, HOST);
 /** The same policy Vex Core uses: platform plus reviewed connectors. */
 const POLICY: PermissionPolicy = { allow: ['platform:*', 'api:*', 'mcp:*'], deny: [], confirm: ['irreversible'] };
 /** What an administrator would write when approving the appointments connector. */
@@ -113,7 +117,7 @@ async function withCitas(): Promise<{ app: CitasApp; tools: AnyTool[]; system: s
   const store = new MemoryStore();
   store.saveConnector({ ...approved, guide: CITAS_GUIDE });
   const registry = new ConnectorRegistry({ store, env: {}, mcpAllow: [] });
-  const system = buildSystemPrompt(DEFAULT_PERSONALITY, DEFAULT_HOST_NAME, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  const system = buildSystemPrompt(DEFAULT_PERSONALITY, HOST, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
   return { app, tools: [registry.guideTool(), ...registry.tools()], system };
 }
 

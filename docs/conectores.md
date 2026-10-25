@@ -8,6 +8,7 @@ Un conector convierte una herramienta que Vex no conocía en acciones que puede 
    - **OpenAPI 3.x en JSON**: una herramienta por operación. Entrada = parámetros de ruta y consulta más `body`, con los `$ref` resueltos. Las cabeceras de autenticación no se exponen al modelo.
    - **MCP**: servidor local por stdio (un comando) o remoto por HTTP. Una herramienta por cada una del servidor, con su JSON Schema.
    - Resultado: un **borrador**. Todas las herramientas desactivadas y "Sin revisar"; el modelo no ve ninguna.
+   - **Propuestas del manifiesto del host** (`connectors[]` en `presets/<host>/manifest.json`, ver `docs/operador.md`): al arrancar, Vex Core las importa como el mismo borrador, con el principal `manifiesto` en la auditoría. Un id que ya existe se respeta tal como lo dejó la persona; una fuente inalcanzable o rechazada por la política de salida se anota en `GET /operator/info` (`host.proposals`) y el servidor arranca igual.
 2. **Riesgo sugerido**, con su motivo a la vista:
 
    | Origen | Lectura | Escritura | Irreversible |
@@ -28,7 +29,8 @@ Un conector convierte una herramienta que Vex no conocía en acciones que puede 
 
 - **Secretos**: el manifiesto solo guarda el *nombre* de la variable de entorno (`CITAS_TOKEN`). El valor vive en el entorno de Vex Core, nunca en la base de datos, el navegador ni la conversación.
 - **MCP local = ejecutar código** en el servidor: solo arranca una **línea de comando completa** (comando y argumentos) que esté en `VEX_MCP_ALLOW`. Un intérprete listado con otros argumentos se rechaza. Sin la variable no arranca ninguno, tampoco en local.
-- **Importar desde una URL** (OpenAPI o MCP remoto): solo https y nunca hacia esta máquina ni redes privadas; en un servidor local se relaja para las herramientas de muestra.
+- **Importar desde una URL** (OpenAPI o MCP remoto): solo https y nunca hacia esta máquina ni redes privadas; en un servidor local se relaja para las herramientas de muestra. Vale igual para las URL que propone el manifiesto del host y para el endpoint del *grant* del estudio.
+- **El manifiesto no amplía nada.** Sus conectores son propuestas sin revisar; su política y el *grant* firmado de la integración solo pueden quitar herramientas a lo aprobado (regla de los tres permisos, `docs/operador.md`).
 - Importar, revisar y borrar exigen un token firmado con rol `admin`, y solo desde las páginas listadas en `CORS_ORIGIN`. Modelo de amenazas completo en `docs/seguridad.md`.
 - Un conector no puede generar herramientas con el nombre de una de la plataforma (`crear` + `tarea` daría `crear_tarea`): se rechaza.
 - Las entradas se validan contra el JSON Schema de cada herramienta antes de llamar al servicio. El validador es un subconjunto propio (tipos, obligatorios, enumerados, rangos, longitudes, patrones, formatos de fecha y email, `anyOf`/`oneOf`/`allOf`, `nullable`); lo desconocido se ignora.

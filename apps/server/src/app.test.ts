@@ -217,9 +217,13 @@ describe('publicación e integraciones', () => {
 
   it('la integración solo puede estrechar lo aprobado', async () => {
     const { key } = await published();
-    const g = (await ctx.app.inject({ method: 'GET', url: `/v1/embed/${key}/grant` })).json() as { grant: { tools: string[]; maxRisk: string } };
+    const g = (await ctx.app.inject({ method: 'GET', url: `/v1/embed/${key}/grant` })).json() as { grant: { tools: string[]; maxRisk: string; issuedAt: string; expiresAt: string } };
     expect(g.grant.tools).toEqual(['buscar_contacto']);
     expect(g.grant.maxRisk).toBe('write');
+    // Short-lived: the host's backend asks again, so revoking the key takes effect within minutes.
+    const life = Date.parse(g.grant.expiresAt) - Date.parse(g.grant.issuedAt);
+    expect(life).toBeGreaterThan(0);
+    expect(life).toBeLessThanOrEqual(15 * 60_000);
   });
 
   it('una clave revocada deja de funcionar al momento', async () => {

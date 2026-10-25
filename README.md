@@ -37,6 +37,9 @@ packages/
                     validación de entradas y ejecución. Cliente MCP propio (stdio y HTTP).
   vex/              El avatar 2D: rig SVG por capas con 8 estados, 5 expresiones,
                     9 visemas y niveles de detalle. Solo depende de React.
+presets/
+  demo-negocio/     Manifiesto del host de la plataforma de demo (con él corre el banco).
+  agenda/           Un segundo host sin código propio: la agenda de citas, solo por manifiesto.
 assets/
   vex-2d/           Rig fuente (SVG + JSON con pivotes, poses, paleta) y hojas de personaje.
   vex-3d/           Modelo GLB con 8 clips de animación, visor Three.js y exportador.
@@ -85,6 +88,7 @@ Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco.
 
 ## Cómo se integra en una plataforma real
 
+0. **Manifiesto:** la plataforma se describe en un `manifest.json` (`presets/`, `VEX_HOST_MANIFEST`): nombre, dominio, claves del contexto de pantalla, conectores propuestos (sin revisar hasta que un administrador los apruebe), política y el avatar publicado por el estudio. Vive en el servidor y solo puede estrechar lo que Vex hace. Detalle en `docs/operador.md`.
 1. **Presencia:** la página monta el avatar y el panel de chat (hoy, el componente React de `apps/operator-demo`; el objetivo del Hito 2 es un web component de una sola etiqueta).
 2. **Manos:** implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP al backend, pasando el token del usuario, y sustituir `MockPlatform` en `apps/api/src/server.ts`. Las herramientas no cambian.
 3. **Identidad:** `TokenService` en `apps/api/src/auth.ts` firma y verifica los tokens de sesión; el punto de cambio es su método `verify`, que debe validar el JWT de la plataforma y convertirlo en el principal. El operador nunca tiene más poder que esa persona.

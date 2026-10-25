@@ -16,6 +16,7 @@
     "@fastify/cors": "^11.3.1",
     "@vex/connectors": "workspace:*",
     "@vex/operator": "workspace:*",
+    "@vexstudio/format": "workspace:*",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"
   },

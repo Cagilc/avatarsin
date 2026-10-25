@@ -1,0 +1,12 @@
+{
+  "format": "vex-host",
+  "version": 1,
+  "host": { "name": "la agenda de citas", "domain": "localhost" },
+  "connectors": [
+    { "id": "citas", "name": "Agenda de citas", "source": { "kind": "openapi", "url": "http://127.0.0.1:8790/openapi.json" } }
+  ],
+  "policy": { "allow": ["api:*", "leer_guia"], "deny": [], "confirm": ["irreversible"] },
+  "screenContext": {
+    "fecha": { "description": "Día que el usuario tiene abierto en la agenda, en formato AAAA-MM-DD." }
+  }
+}

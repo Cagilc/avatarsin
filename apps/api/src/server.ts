@@ -3,10 +3,10 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.ts';
 import { TokenService } from './auth.ts';
+import { HostManifestError, loadHostManifest } from './host.ts';
 import { MockPlatform } from './platform/mock.ts';
 import { configFromEnv, createProvider } from './providers/index.ts';
 import { MemoryStore, SqliteStore } from './storage.ts';
-import { DEFAULT_HOST_NAME } from './system.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -14,6 +14,16 @@ const envFile = join(root, '.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const env = process.env;
+// The host manifest: a preset name or a path (relative to apps/api). A manifest that does not
+// validate stops the start here, with the field and the reason. Unset = a bare operator.
+let manifest;
+try {
+  manifest = env['VEX_HOST_MANIFEST'] ? loadHostManifest(env['VEX_HOST_MANIFEST'], { cwd: root }) : undefined;
+} catch (err) {
+  if (!(err instanceof HostManifestError)) throw err;
+  console.error(`VEX_HOST_MANIFEST: ${err.message}`);
+  process.exit(1);
+}
 const config = configFromEnv();
 const provider = createProvider(config);
 const port = Number(env['PORT'] ?? 8787);
@@ -38,8 +48,7 @@ const app = buildApp({
   provider,
   platform: new MockPlatform(),
   store,
-  // How Vex names the platform it operates in its prompt (e.g. the product's name).
-  hostName: env['VEX_HOST_NAME'] ?? DEFAULT_HOST_NAME,
+  ...(manifest ? { manifest } : {}),
   allowedOrigins,
   tokens,
   demoLogin,
@@ -55,7 +64,7 @@ const app = buildApp({
 app
   .listen({ port, host })
   .then((address) => {
-    app.log.info(`Vex Core en ${address} · proveedor ${provider.name} · datos ${dbSetting}`);
+    app.log.info(`Vex Core en ${address} · proveedor ${provider.name} · datos ${dbSetting} · host ${manifest ? `${manifest.host.name} (manifiesto ${env['VEX_HOST_MANIFEST']})` : 'sin manifiesto'}`);
     if (provider.name === 'scripted') app.log.warn('Sin ANTHROPIC_API_KEY: modo guion (planificador por palabras clave). Copia .env.example a .env para usar Claude.');
     if (demoLogin && !loopback) app.log.warn('VEX_DEMO_LOGIN=1 en un servidor no local: cualquiera puede entrar como usuario de demo.');
     if (!env['VEX_TOKEN_SECRET']) app.log.info('Sin VEX_TOKEN_SECRET: las sesiones caducan al reiniciar.');

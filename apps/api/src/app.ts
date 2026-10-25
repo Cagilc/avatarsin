@@ -2,15 +2,16 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
-import { riskSchema, runOperator, type AnyTool, type ChatMessage, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
+import { decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
+import { GrantClient, type GrantState } from './grant.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
 import { SessionStore } from './sessions.ts';
 import { MemoryStore, type OperatorStore } from './storage.ts';
-import { DEFAULT_PERSONALITY, buildSystemPrompt } from './system.ts';
+import { DEFAULT_HOST_NAME, DEFAULT_PERSONALITY, buildSystemPrompt } from './system.ts';
 import { platformTools } from './tools/platform.ts';
 
 export interface AppOptions {
@@ -18,9 +19,18 @@ export interface AppOptions {
   platform: PlatformClient;
   /** Audit and conversations. Defaults to memory (lost on restart). */
   store?: OperatorStore;
+  /** Overrides the manifest's policy (tests). Default: the manifest's, then the operator's. */
   policy?: PermissionPolicy;
   personality?: VexPersonality;
+  /** How the prompt names the platform when there is no manifest. */
   hostName?: string;
+  /**
+   * The host manifest (loaded on the server, see host.ts): name, screen context, proposed
+   * connectors, policy, avatar integration and feature switches. Without one, a bare operator.
+   */
+  manifest?: HostManifest;
+  /** How the grant is fetched from the studio (tests inject a fetch and a clock). */
+  grant?: { fetch?: typeof fetch; now?: () => number; refreshMs?: number };
   /**
    * Pages allowed to call Vex Core from a browser, as exact origins (scheme://host:port).
    * Any other origin gets no CORS headers and a 403 on state-changing requests. Empty = browsers blocked.
@@ -56,6 +66,9 @@ export interface AppOptions {
 
 /** Platform tools plus reviewed connectors; the policy cannot widen what a person approved. */
 const OPERATOR_POLICY: PermissionPolicy = { allow: ['platform:*', 'api:*', 'mcp:*'], deny: [], confirm: ['irreversible'] };
+
+/** Who the audit names for what the manifest proposes at start. */
+const MANIFEST_PRINCIPAL: Principal = { id: 'manifiesto', name: 'Manifiesto del host', role: 'admin' };
 
 const idSchema = z.string().regex(/^[a-z][a-z0-9]{1,23}$/, 'id: minúsculas y dígitos, empieza por letra, máximo 24');
 const importOpenApiBody = z.object({
@@ -108,9 +121,11 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false });
   const store = opts.store ?? new MemoryStore();
-  const policy = opts.policy ?? OPERATOR_POLICY;
+  const manifest = opts.manifest;
+  const policy = opts.policy ?? manifest?.policy ?? OPERATOR_POLICY;
   const personality = opts.personality ?? DEFAULT_PERSONALITY;
-  const hostName = opts.hostName ?? 'la plataforma';
+  const host = manifest ? { name: manifest.host.name, screenContext: manifest.screenContext } : { name: opts.hostName ?? DEFAULT_HOST_NAME };
+  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
   const platform: AnyTool[] = platformTools(opts.platform);
   const registry = new ConnectorRegistry({
     store,
@@ -119,9 +134,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     checkUrl: (url) => checkOutboundUrl(url, urlPolicy),
     ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}),
   });
-  /** Recomputed per message: a review takes effect on the next request, not mid-run. */
-  const currentTools = (): AnyTool[] => [...platform, registry.guideTool(), ...registry.tools()];
-  const currentSystem = (): string => buildSystemPrompt(personality, hostName, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  const guide = registry.guideTool();
+  // The studio's grant, only for a host whose manifest names its avatar integration.
+  const grants = manifest?.avatar ? new GrantClient({ avatar: manifest.avatar, domain: manifest.host.domain, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), ...opts.grant }) : null;
+  const grantState = async (): Promise<GrantState | null> => (grants ? grants.current() : null);
+  /**
+   * What the model sees, recomputed per message: platform tools and reviewed connectors, narrowed by
+   * the policy and by the grant (approved ∩ policy ∩ grant; a review takes effect on the next
+   * request, not mid-run). `leer_guia` documents the connectors and is no host action: the policy
+   * may deny it, the grant does not list it.
+   */
+  const currentTools = async (): Promise<AnyTool[]> => {
+    const all = [...platform, guide, ...registry.tools()];
+    const state = await grantState();
+    const kept = new Set<AnyTool>(permittedTools(all.filter((t) => t !== guide), policy, state ? GrantClient.layer(state) : undefined));
+    return all.filter((t) => kept.has(t) || (t === guide && decide(policy, guide) !== 'deny'));
+  };
+  const currentSystem = (): string => buildSystemPrompt(personality, host, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
   const sessions = new SessionStore(store);
   const confirmTimeoutMs = opts.confirmTimeoutMs ?? 5 * 60_000;
   const limits = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
@@ -129,7 +158,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const providerProxy = opts.enableProviderProxy ?? false;
   const tokens = opts.tokens ?? TokenService.ephemeral();
   const allowedOrigins = opts.allowedOrigins ?? [];
-  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
+  /** Connectors the manifest proposed at start and what became of each. */
+  const proposals: Array<{ id: string; status: 'proposed' | 'existing' | 'failed'; error?: string }> = [];
 
   const principalOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
     const principal = tokens.verify(bearer(req.headers.authorization));
@@ -151,13 +181,22 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.get('/health', async () => ({ ok: true }));
 
-  app.get('/operator/info', async () => ({
-    provider: opts.provider.name,
-    providerProxy,
-    personality,
-    policy,
-    tools: currentTools().map((t) => ({ name: t.name, driver: t.driver, risk: t.risk, description: t.description })),
-  }));
+  app.get('/operator/info', async () => {
+    const state = await grantState();
+    return {
+      provider: opts.provider.name,
+      providerProxy,
+      personality,
+      policy,
+      host: {
+        name: host.name,
+        manifest: manifest !== undefined,
+        ...(manifest ? { domain: manifest.host.domain, features: manifest.features, proposals } : {}),
+      },
+      grant: state === null ? { status: 'none' } : state.status === 'ok' ? { status: 'ok', tools: state.grant.tools, maxRisk: state.grant.maxRisk, expiresAt: state.grant.expiresAt } : state,
+      tools: (await currentTools()).map((t) => ({ name: t.name, driver: t.driver, risk: t.risk, description: t.description })),
+    };
+  });
 
   // --- Demo platform (mock). Replace with the real backend's endpoints/token. ---
   if (opts.demoLogin) {
@@ -236,7 +275,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       await runOperator({
         sessionId: session.id,
         provider: opts.provider,
-        tools: currentTools(),
+        tools: await currentTools(),
         policy,
         principal,
         context: body.data.context ?? {},
@@ -300,6 +339,32 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   /** Connector changes go to the same audit trail as the operator's actions. */
   const auditAdmin = (principal: Principal, tool: string, params: Record<string, unknown>, summary: string) =>
     store.recordAudit({ ts: new Date().toISOString(), sessionId: 'admin', principal, actionId: crypto.randomUUID(), tool, driver: 'platform', risk: 'write', params, summary, outcome: 'ok', durationMs: 0 });
+
+  // Connectors the manifest proposes enter as drafts, like a hand import: nothing reaches the model
+  // until an administrator reviews them. An id already in the registry is left as the person left it;
+  // a source that cannot be reached is reported, not fatal.
+  app.addHook('onReady', async () => {
+    for (const c of manifest?.connectors ?? []) {
+      if (registry.list().some((m) => m.id === c.id)) {
+        proposals.push({ id: c.id, status: 'existing' });
+        continue;
+      }
+      try {
+        const m =
+          c.source.kind === 'openapi'
+            ? await registry.importOpenApi({ id: c.id, url: c.source.url, ...(c.name ? { name: c.name } : {}), ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}), ...(c.auth ? { auth: c.auth } : {}) })
+            : c.source.kind === 'mcp-http'
+              ? await registry.importMcp({ id: c.id, transport: 'http', url: c.source.url, ...(c.name ? { name: c.name } : {}) })
+              : await registry.importMcp({ id: c.id, transport: 'stdio', command: c.source.command, args: c.source.args, ...(c.name ? { name: c.name } : {}) });
+        auditAdmin(MANIFEST_PRINCIPAL, 'importar_conector', { id: m.id, origen: 'manifiesto del host' }, `Proponer ${m.name} desde el manifiesto (${m.tools.length} herramientas, ninguna activa)`);
+        proposals.push({ id: c.id, status: 'proposed' });
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        app.log.warn(`El conector ${c.id} propuesto por el manifiesto no se pudo importar: ${error}`);
+        proposals.push({ id: c.id, status: 'failed', error });
+      }
+    }
+  });
 
   app.get('/connectors', async (req, reply) => {
     if (!adminOf(req, reply)) return undefined;

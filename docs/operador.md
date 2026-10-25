@@ -22,7 +22,7 @@ Sin `ANTHROPIC_API_KEY`, Vex Core arranca en **modo guion**: entiende peticiones
 
 ## Cómo funciona una petición
 
-1. La página manda `POST /operator/chat` con el mensaje, el `sessionId` (si ya hay conversación) y el **contexto de pantalla** (`{ pantalla, contactoId, expedienteId }`). El token va en `Authorization: Bearer`.
+1. La página manda `POST /operator/chat` con el mensaje, el `sessionId` (si ya hay conversación) y el **contexto de pantalla** (`{ pantalla, contactoId, expedienteId }`, las claves que declara el manifiesto del host). El token va en `Authorization: Bearer`.
 2. Vex Core responde con un flujo **SSE** de eventos (`packages/operator/src/schema/events.ts`): `phase`, `text` (streaming), `tool_call`, `tool_result`, `confirm`, `done`, `error`.
 3. El bucle (`runOperator`) pide al modelo qué hacer; por cada herramienta pedida: valida los parámetros con su esquema, consulta la **política** (`decide`: permitir / confirmar / denegar), si toca confirmación emite `confirm` y **se queda parado** hasta que llega `POST /operator/confirm`, ejecuta, registra en la auditoría y devuelve el resultado al modelo. Repite hasta que el modelo responde en texto o se agotan los pasos (8).
 4. El avatar: el *director* del host (`apps/operator-demo/src/director.ts`) traduce fases a estados del rig (`thinking`, `working`, `listening` mientras espera el OK, `talking` con visemas al llegar la respuesta, `success` si todo salió bien).
@@ -34,6 +34,7 @@ Sin `ANTHROPIC_API_KEY`, Vex Core arranca en **modo guion**: entiende peticiones
 - **Principal** (`schema/action.ts`): quién es el usuario; el operador nunca tiene más poder que él. El token de sesión lo firma el servidor (`TokenService` en `apps/api/src/auth.ts`, HMAC con caducidad); el punto de cambio para la plataforma real es su método `verify`: validar el JWT de la plataforma y mapear claims → principal.
 - **Auditoría** (`schema/audit.ts`): una línea por acción con usuario, parámetros, lo confirmado, resultado y duración. Se guarda en SQLite (`apps/api/data/vex.db`, ignorado por git) y se consulta por usuario en `GET /operator/audit`.
 - **Tema y personalidad** (`schema/theme.ts`): los 9 colores del rig y el comportamiento (nombre, tono, saludo, duración del habla). La personalidad entra en el system prompt; el tema está listo para aplicarse como variables CSS.
+- **Manifiesto del host y *grant*** (`schema/host.ts`): lo que la plataforma declara (nombre, dominio, contexto de pantalla, conectores propuestos, política, avatar, interruptores) y lo que el estudio firma para una integración (herramientas, riesgo máximo, orígenes, caducidad), con la regla `permittedTools` = aprobado ∩ política ∩ *grant*. Sección propia más abajo.
 
 ## Herramientas del driver de plataforma
 
@@ -47,6 +48,28 @@ Sin `ANTHROPIC_API_KEY`, Vex Core arranca en **modo guion**: entiende peticiones
 | `enviar_correo` | **irreversible** | envía un borrador; pide confirmación |
 
 Para conectar la plataforma real: implementar `PlatformClient` (`apps/api/src/platform/types.ts`) con llamadas HTTP a vuestro backend, pasando el token del usuario; sustituir `MockPlatform` en `server.ts`. Las herramientas no cambian.
+
+## El manifiesto del host (paso 1 del plan maestro)
+
+Lo que una plataforma declara sobre sí misma para que Vex la opere, en un JSON validado por `packages/operator/src/schema/host.ts`. **Vive en el servidor** (`VEX_HOST_MANIFEST`: un nombre de preset de `presets/<nombre>/manifest.json` o una ruta); nunca llega del navegador. Sin manifiesto, Vex Core se comporta exactamente como antes.
+
+| Campo | Qué hace |
+|---|---|
+| `host.name`, `host.domain` | Cómo nombra el prompt a la plataforma («el operador de Demo Negocio») y el dominio donde se incrusta. |
+| `screenContext` | Las claves que la página envía con cada mensaje, descritas para el modelo. El prompt ya no nombra ningún dominio de negocio: lo pone el manifiesto. |
+| `connectors[]` | **Propuestas**: al arrancar entran en el registro como «Sin revisar», igual que una importación a mano. Nada llega al modelo hasta que un administrador las revisa; un id que ya existía se deja como lo dejó la persona; una fuente inalcanzable o que la política de salida rechaza se anota en `/operator/info` y el servidor arranca igual. |
+| `policy` | La política de permisos del host. Lo que la política deniega ni siquiera se ofrece al modelo. |
+| `avatar` | El avatar publicado por el estudio para esta integración: `endpoint`, `publicKey` y `keyId`. Con él, Vex Core pide el *grant* firmado y lo aplica (abajo). |
+| `features` | Interruptores de los pasos siguientes (tours, anuncios, botones rápidos, driver DOM). Todos apagados; con todo apagado, las herramientas y la política son idénticas a las de un servidor sin manifiesto (hay un test que lo compara). |
+| `tours`, `announcements`, `quickActions` | Reservados: un manifiesto puede nombrarlos, pero hoy deben estar vacíos. |
+
+Un manifiesto que no valida para el arranque con el fichero, el campo y el motivo (`VEX_HOST_MANIFEST: …/manifest.json: manifiesto del host no válido. host.name: …`).
+
+**La regla de los tres permisos.** Lo que Vex puede ejecutar = herramientas aprobadas por una persona ∩ política del manifiesto ∩ *grant* firmado de la integración (`permittedTools`). Cada capa solo quita; ninguna añade lo que otra dejó fuera. La política sigue decidiendo, llamada a llamada, si lo que queda pide confirmación. `leer_guia` es la documentación de los conectores, no una acción del host: la política puede negarla, el *grant* no la lista.
+
+**El *grant* del estudio** (`apps/api/src/grant.ts`). Vex Core lo descarga de `<endpoint>/grant` (la URL pasa por la misma política de salida que cualquier importación), comprueba por este orden la forma del sobre, el `keyId`, la firma Ed25519 sobre los bytes recibidos, el contenido, que uno de sus orígenes esté en `host.domain` y que no haya caducado. Caduca a los 10 minutos de emitirse y se vuelve a pedir; una respuesta (válida o no) se reutiliza un minuto, así que una integración revocada deja de operar en un minuto como mucho y un estudio caído no recibe una petición por mensaje. Si el estudio no responde, se conserva el último *grant* válido hasta su caducidad; cualquier otro fallo (firma, clave, dominio, revocación) deja a Vex **sin herramientas**, no con las de antes. Estado visible en `GET /operator/info` (`grant.status`: `none`, `ok`, `invalid`, `expired`, `foreign`, `unavailable`).
+
+**Presets.** `presets/demo-negocio/` es la plataforma de la demo (con él corre el banco de encargos). `presets/agenda/` es un **segundo host sin una línea de código propia**: propone la agenda de `apps/sample-tools` y su política solo permite conectores y la guía; tras la revisión, Vex opera la agenda y no ve las herramientas de la plataforma de demo. Pruebas de todo esto en `apps/api/src/host.test.ts` (17) y `packages/operator/src/host.test.ts` (14).
 
 ## Probar el avatar a mano
 
@@ -92,7 +115,7 @@ En local usan el **Edge instalado** (binario firmado: la directiva no lo bloquea
 
 ## Comprobado
 
-- Tests: `pnpm test` (operator 25, connectors 16, api 49 con la puerta del banco y los de seguridad), `pnpm eval` 15/15 en modo guion (13 casos reservados para Claude), `pnpm e2e` 9/9 en Edge, `pnpm build` de la demo en producción.
+- Tests: `pnpm test` (operator 39, connectors 16, api 66 con la puerta del banco, los de seguridad y los del manifiesto), `pnpm eval` 15/15 en modo guion con el preset `demo-negocio` (13 casos reservados para Claude), `pnpm e2e` 9/9 en Edge, `pnpm build` de la demo en producción.
 - Navegador (2026-10-24): la tarjeta muestra para, asunto y cuerpo reales; Detener deja el paso de envío como "detenido", no sale ningún correo y vuelve el botón Enviar.
 
 ## Seguridad que ya está y la que falta

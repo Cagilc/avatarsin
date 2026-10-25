@@ -13,6 +13,7 @@ Un avatar animado (Vex) que ejecuta acciones en cualquier plataforma de negocio 
 5. El avatar (`packages/vex`) es presentación pura: recibe `state`/`viseme`; el "director" del host traduce fases a estados.
 6. Conectores (`packages/connectors`, `docs/conectores.md`): nada importado llega al modelo sin revisión humana; bajar un riesgo sugerido exige motivo escrito; un cambio de contrato al actualizar devuelve la herramienta a "Sin revisar". Los secretos solo por nombre de variable de entorno. Los servidores MCP locales solo si su línea de comando completa está en `VEX_MCP_ALLOW`.
 7. Seguridad (`docs/seguridad.md`): tokens firmados (`TokenService`), navegadores solo desde `CORS_ORIGIN`, login de demo solo en local, URL de importación solo https y públicas. Toda ruta nueva que cambie estado exige token y pasa por el control de origen. Al añadir una amenaza o una defensa, actualizar la tabla de ese documento y su test.
+8. Manifiesto del host (`packages/operator/src/schema/host.ts`, `presets/`, `docs/operador.md`): vive en el servidor, nunca llega del navegador, y solo estrecha. Lo que Vex ejecuta = aprobado ∩ política ∩ *grant* firmado (`permittedTools`); sus conectores entran «Sin revisar»; `features` apagado = comportamiento idéntico a sin manifiesto. Ningún nombre de plataforma concreta en el código ni en los prompts: el nombre y el contexto de pantalla salen del manifiesto. Un campo nuevo del manifiesto = esquema + test + fila en `docs/operador.md`.
 
 ## Estudio de avatares (`packages/format`, `packages/runtime`, `apps/server`, `apps/studio`)
 Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
@@ -47,7 +48,8 @@ Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
 - Para probar conectores sin clave: orden directa `usa <herramienta> {json}` del modo guion.
 
 ## Siguiente
-- Fase A de la fusión: la demo muestra el `<vex-avatar>` del estudio, la personalidad publicada llega al prompt y el operador limita herramientas con el *grant* firmado de su integración.
+El orden está en `docs/plan-maestro.md`. Hecho el paso 1 (manifiesto, propuestas, regla de permisos y lectura del *grant*).
+- Paso 2: `<vex-assistant>` sobre el `<vex-avatar>` del estudio, token por función del host, registro de elementos; la personalidad publicada llega al prompt.
 - Ejecutar el banco con Claude (`pnpm eval -- --provider anthropic`) y fijar el acierto mínimo con datos.
 - Conectar el backend real: implementar `PlatformClient` y `TokenService.verify` contra el JWT de la plataforma.
 - Conectores: búsqueda de herramientas bajo demanda cuando haya muchas; OpenAPI en YAML; OAuth por usuario.

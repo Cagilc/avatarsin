@@ -76,6 +76,13 @@ Mejoras:
 - Regla de los tres permisos con tests; lectura del *grant* firmado del estudio (verificar firma, caducar y revocar).
 - Segundo host (agenda de `apps/sample-tools`) solo con manifiesto.
 - **Hecho cuando:** banco 15/15 con el preset; agenda funcionando sin tocar `apps/api/src`; tests de la regla de permisos y del *grant* alterado o revocado; `features` apagado = comportamiento idéntico; documentación al día.
+- **Hecho el 2026-10-25** en la rama local `wf/01-manifiesto`. Puertas: tipado OK, 179 pruebas (operator 39, api 66, connectors 16, format 17, runtime 9, server 32), banco 15/15 con `presets/demo-negocio`, e2e 9/9 en Edge, `salud.js` sin errores. Decisiones tomadas al hacerlo:
+  - `leer_guia` (documentación de los conectores) queda fuera del *grant* pero no de la política: la política del preset `agenda` la permite por nombre.
+  - El *grant* del estudio lleva `expiresAt` (10 min); Vex Core reutiliza cualquier respuesta un minuto, conserva un *grant* válido si el estudio no responde y se queda **sin herramientas** ante firma, clave, dominio o revocación malos.
+  - `opts.policy` de `buildApp` (pruebas) manda sobre `manifest.policy`; `server.ts` no la pasa, así que en ejecución manda el manifiesto.
+  - `VEX_HOST_NAME` desaparece; `VEX_HOST_MANIFEST` (preset o ruta) lo sustituye. Sin manifiesto, nombre genérico y ninguna propuesta.
+  - Lo que la política deniega no se ofrece al modelo (antes se ofrecía y se denegaba al llamar). Con la política por defecto no cambia nada.
+  - `apps/api` depende ahora de `@vexstudio/format` (solo `canonicalJson`, `fromBase64Url`, `importPublicKey`) y carga la librería DOM de TypeScript por los tipos WebCrypto, como `apps/server`.
 
 ### Paso 2 · Asistente incrustable (workflow 02 adaptado)
 - `<vex-assistant>`: chat, tarjeta de confirmación y `<vex-avatar>` del estudio, con estados según la fase del operador. Token por función del host.
