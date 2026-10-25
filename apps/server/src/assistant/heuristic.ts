@@ -148,7 +148,12 @@ export function inferRigging(doc: AvatarDocument): Rigging | null {
     const r = role.get(p.id) ?? 'other';
     const b = p.bbox;
     if (r === 'body' || r === 'head') pivot.set(p.id, { x: b.x + b.width / 2, y: b.y + b.height });
-    else if (APPENDAGES.has(r)) {
+    else if (r === 'arm') {
+      // The shoulder: the edge facing the parent, near the top.
+      const host = byId.get(parent.get(p.id) ?? '') ?? root;
+      const left = centre(p).x < centre(host).x;
+      pivot.set(p.id, { x: left ? b.x + b.width : b.x, y: b.y + Math.min(b.width / 2, b.height * 0.2) });
+    } else if (APPENDAGES.has(r)) {
       // Where the part meets its parent: the point of the part nearest to the parent's centre.
       const host = byId.get(parent.get(p.id) ?? '') ?? root;
       const hc = centre(host);

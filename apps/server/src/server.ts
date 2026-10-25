@@ -36,6 +36,7 @@ const app = buildApp({
   assistant,
   allowedOrigins,
   devLogin,
+  publicUrl: env['STUDIO_PUBLIC_URL'] ?? `http://localhost:${port}`,
   runtimeBundle: join(root, '..', '..', 'packages', 'runtime', 'dist', 'vex-avatar.js'),
   logger: true,
 });

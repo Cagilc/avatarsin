@@ -137,6 +137,10 @@ export class Rig {
     const cy = part.bbox.y + part.bbox.height / 2 - part.pivot.y;
     const L = Math.max(1, Math.hypot(cx, cy));
 
+    // A push along the part (a jump under a vertical antenna) has no lever arm in an ideal rod,
+    // but real springy parts buckle to one side: outward for side parts, right for centred ones.
+    const side = Math.abs(cx) > 0.15 * L ? Math.sign(cx) : 1;
+
     const heavy = lerp(0.6, 1.6, p.weight);
     const omega0 = (2 * Math.PI * lerp(0.8, 6, p.stiffness)) / Math.sqrt(heavy);
     const zeta = lerp(0.03, 1, p.damping);
@@ -152,9 +156,10 @@ export class Rig {
       const ry = cx * sin + cy * cos;
       // The part's mass resists the pivot's acceleration: torque of the pseudo-force −m·a at the centre.
       const inertial = (-(rx * ay - ry * ax) / (L * L)) * RAD2DEG * inertia - aa * inertia;
+      const axial = ((rx * ax + ry * ay) / (L * L)) * RAD2DEG * inertia * 0.35 * side;
       // Gravity pulls the centre along g; stiffer parts sag less.
       const sag = OMEGA_REF * OMEGA_REF * 30 * p.gravity * ((rx * g.y - ry * g.x) / L);
-      const acc = -omega0 * omega0 * spring.theta - 2 * zeta * omega0 * spring.omega + inertial + sag;
+      const acc = -omega0 * omega0 * spring.theta - 2 * zeta * omega0 * spring.omega + inertial + axial + sag;
       spring.omega += acc * h;
       spring.theta += spring.omega * h;
       if (Math.abs(spring.theta) > p.limit) {

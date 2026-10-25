@@ -36,6 +36,8 @@ export interface StudioOptions {
   allowedOrigins?: string[];
   /** Password-less login as the first owner. Local development only. */
   devLogin?: boolean;
+  /** Public base URL of this server, used in the embed snippet (default http://localhost:8788). */
+  publicUrl?: string;
   /** Path to the built <vex-avatar> script served to host pages. */
   runtimeBundle?: string | null;
   limits?: { loginPerMinute?: number; assistantPerMinute?: number; uploadsPerMinute?: number; embedPerMinute?: number };
@@ -142,7 +144,7 @@ export function buildApp(opts: StudioOptions): FastifyInstance {
   app.get('/health', async () => ({ ok: true }));
 
   // ── session ──
-  app.get('/api/config', async () => ({ devLogin: Boolean(opts.devLogin), assistant: assistant.name }));
+  app.get('/api/config', async () => ({ devLogin: Boolean(opts.devLogin), assistant: assistant.name, publicUrl: opts.publicUrl ?? 'http://localhost:8788', runtimeReady: runtimeJs !== null }));
 
   app.post('/api/login', async (req, reply) => {
     const body = loginBody.safeParse(req.body);

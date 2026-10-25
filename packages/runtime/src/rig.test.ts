@@ -61,6 +61,20 @@ describe('esqueleto y física', () => {
     expect(Math.abs(rig.springAngle('antena'))).toBeLessThan(0.05);
   });
 
+  it('un salto en vertical también hace rebotar una antena recta', () => {
+    const doc = fixtureDocument();
+    doc.world.gravity.strength = 0;
+    const rig = new Rig(doc);
+    const at = (y: number): Sample => new Map([['cuerpo', { rotate: 0, x: 0, y, scaleX: 1, scaleY: 1, opacity: 1 }]]);
+    let peak = 0;
+    const path = [0, 0, -10, -25, -35, -38, -35, -25, -10, 0, 0, 0, 0, 0, 0];
+    for (const y of path) {
+      rig.frame(at(y), 1 / 60);
+      peak = Math.max(peak, Math.abs(rig.springAngle('antena')));
+    }
+    expect(peak).toBeGreaterThan(1);
+  });
+
   it('el estilo de dibujo rebota más que el realista', () => {
     const swing = (realism: number) => {
       const doc = fixtureDocument();

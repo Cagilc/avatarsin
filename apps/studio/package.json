@@ -1,0 +1,26 @@
+{
+  "name": "@vexstudio/studio",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The studio editor: import a logo, build the skeleton, tune physics, materials and personality with the assistant, publish and integrate.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vexstudio/format": "workspace:*",
+    "@vexstudio/runtime": "workspace:*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.5"
+  }
+}
