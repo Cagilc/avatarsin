@@ -49,6 +49,10 @@ Un fichero JSON o YAML, validado con Zod en `packages/operator` (`schema/host.ts
 
 Reglas: el manifiesto no puede ampliar lo que la revisión humana de conectores aprobó; los secretos solo por nombre de variable de entorno; un manifiesto inválido se rechaza al arrancar con el error exacto.
 
+## Cómo se ejecuta
+
+Los hitos se han convertido en **cinco workflows** autocontenidos en `docs/workflows/` (protocolo, reparto de trabajo, modelo por fase y orden en `00-protocolo.md`). Correspondencia: hito 0 → workflow 01, hito 1 → 02, hito 2 → 03, hito 3 → 04, hito 4 → 05. El hito 5 (servidor y multi-inquilino) queda fuera: es el carril de infra de Oscar.
+
 ## Hitos
 
 Cada hito: un PR, `pnpm typecheck` + `pnpm test` + banco en verde (y `pnpm e2e` si se toca demo o avatar), `docs/seguridad.md` actualizado si cambia una amenaza o defensa.
