@@ -9,5 +9,18 @@
     "expedienteId": { "description": "Referencia del expediente abierto, p. ej. EXP-2026-041." }
   },
   "policy": { "allow": ["platform:*", "api:*", "mcp:*"], "deny": [], "confirm": ["irreversible"] },
-  "features": { "tours": false, "announcements": false, "quickActions": false, "domDriver": false }
+  "features": { "tours": false, "announcements": true, "quickActions": true, "domDriver": false },
+  "quickActions": [
+    { "id": "buscar-laura", "label": "Buscar a Laura", "icon": "🔎", "tool": "buscar", "params": { "consulta": "Laura Pérez", "tipo": "contactos" } },
+    { "id": "quien-es-marco", "label": "¿Quién es Marco?", "prompt": "¿Quién es Marco Rossi?" },
+    { "id": "campana-octubre", "label": "Campaña de octubre", "prompt": "Crea una tarea para marketing \"Campaña de octubre\" y envíale el presupuesto por correo" }
+  ],
+  "announcements": [
+    {
+      "id": "bienvenida",
+      "title": "Vex ya opera aquí",
+      "body": "Pídeme cosas con tus propias palabras: busco contactos, abro expedientes, creo tareas y redacto correos. Lo irreversible te lo enseño antes de hacerlo.",
+      "cta": { "kind": "quickAction", "id": "buscar-laura" }
+    }
+  ]
 }

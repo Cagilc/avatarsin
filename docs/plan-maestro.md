@@ -101,6 +101,13 @@ Mejoras:
 
 ### Paso 3 · Anuncios y botones rápidos (workflow 04), en paralelo con el 2
 - Como lo propone Oscar; botones con herramienta pasan por política y confirmación; borradores de anuncio desde conectores.
+- **Hecho el 2026-10-25** en la rama local `wf/03-anuncios`. Puertas: tipado OK, 210 pruebas (operator 44, format 22, runtime 9, connectors 16, server 32, api 76, assistant 11), banco 15/15, e2e del operador 9/9, e2e del estudio 7/7 (43 s), `salud.js` limpio. Decisiones tomadas al hacerlo:
+  - Contratos en `packages/operator/src/schema/engage.ts`; el manifiesto los recibe en lugar de los marcadores (`tours` sigue reservado). Un `cta` de anuncio solo puede apuntar a un botón que exista.
+  - Un botón con herramienta corre por el bucle con `DirectProvider` (una `tool_use` con id predecible `direct_<herramienta>`): validación, política, confirmación con vista previa, auditoría e historial de la sesión; la lista de botones solo ofrece herramientas que el bucle ejecutaría y un botón denegado responde 403 con línea `denied`. Máximo 6 botones.
+  - La presentación baja por rutas autenticadas de Vex Core (`/engage/*`), filtradas por el rol del token; no se firma: el canal ya es el de la sesión. Si algún día se cachea fuera de Vex Core, firmar entonces.
+  - Los borradores de conectores y el estado «visto» viven en el almacén (SQLite); los anuncios del manifiesto se editan en el manifiesto. Un borrador solo nace cuando una revisión activa herramientas que no estaban activas.
+  - Las novedades para todos entran en el prompt como aviso del administrador; el modo guion no las contesta (queda para el paso 4, con Claude).
+  - `presets/demo-negocio` enciende anuncios y botones (tres botones, un anuncio); las herramientas y la política siguen idénticas a sin manifiesto, y hay un test que lo comprueba también con todo apagado.
 
 ### Paso 4 · Medir con Claude
 - Requiere que César ponga su clave en los `.env`. Banco del operador con Claude y banco nuevo del asistente del estudio; fijar mínimos con datos.

@@ -51,10 +51,12 @@ describe('loading the host manifest', () => {
     expect(slash(resolveManifestPath('./hosts/mio.json', { cwd: 'C:/vex/apps/api' }))).toBe('C:/vex/apps/api/hosts/mio.json');
   });
 
-  it('loads the demo preset: the demo platform by name, every feature off, nothing proposed', () => {
+  it('loads the demo preset: the demo platform by name, announcements and buttons on, nothing proposed', () => {
     const m = loadHostManifest('demo-negocio');
     expect(m.host).toEqual({ name: 'Demo Negocio', domain: 'demo-negocio.example' });
-    expect(m.features).toEqual({ tours: false, announcements: false, quickActions: false, domDriver: false });
+    expect(m.features).toEqual({ tours: false, announcements: true, quickActions: true, domDriver: false });
+    expect(m.quickActions.map((q) => q.id)).toEqual(['buscar-laura', 'quien-es-marco', 'campana-octubre']);
+    expect(m.announcements.map((a) => a.id)).toEqual(['bienvenida']);
     expect(m.connectors).toEqual([]);
     expect(Object.keys(m.screenContext)).toEqual(['pantalla', 'contactoId', 'contactoEmail', 'expedienteId']);
   });
@@ -142,14 +144,18 @@ describe('Vex Core with a host manifest', () => {
     expect(i.tools.map((t) => t.name)).toEqual([...PLATFORM_TOOLS, 'leer_guia']);
   });
 
-  it('the demo preset, every feature off, gives exactly the same tools and policy as no manifest', async () => {
+  it('the demo preset gives exactly the same tools and policy as no manifest: features only add presentation', async () => {
     await start();
     const bare = await info();
     await start({ manifest: loadHostManifest('demo-negocio') });
     const demo = await info();
     expect(demo.tools).toEqual(bare.tools);
     expect(demo.policy).toEqual(bare.policy);
-    expect(demo.host).toEqual({ name: 'Demo Negocio', manifest: true, domain: 'demo-negocio.example', features: { tours: false, announcements: false, quickActions: false, domDriver: false }, proposals: [] });
+    expect(demo.host).toEqual({ name: 'Demo Negocio', manifest: true, domain: 'demo-negocio.example', features: { tours: false, announcements: true, quickActions: true, domDriver: false }, proposals: [] });
+    await start({ manifest: { ...loadHostManifest('demo-negocio'), features: { tours: false, announcements: false, quickActions: false, domDriver: false } } });
+    const off = await info();
+    expect(off.tools).toEqual(bare.tools);
+    expect(off.policy).toEqual(bare.policy);
   });
 
   it('the manifest names the host and its screen context in the prompt the model gets', async () => {

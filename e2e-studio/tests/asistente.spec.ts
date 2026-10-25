@@ -96,6 +96,12 @@ test.beforeAll(async () => {
     host: { name: 'Demo Negocio', domain: 'localhost' },
     avatar: { endpoint: `${STUDIO}/v1/embed/${key.id}`, publicKey: signing.publicKey, keyId: signing.keyId },
     screenContext: { pantalla: { description: 'Vista abierta.' }, contactoId: { description: 'Id del contacto abierto.' }, contactoEmail: { description: 'Correo del contacto abierto.' }, expedienteId: { description: 'Expediente abierto.' } },
+    features: { announcements: true, quickActions: true },
+    quickActions: [
+      { id: 'buscar-laura', label: 'Buscar a Laura', icon: '🔎', tool: 'buscar', params: { consulta: 'Laura Pérez', tipo: 'contactos' } },
+      { id: 'quien-es-marco', label: '¿Quién es Marco?', prompt: '¿Quién es Marco Rossi?' },
+    ],
+    announcements: [{ id: 'bienvenida', title: 'Pixel ya opera aquí', body: 'Pídeme cosas con tus propias palabras.', cta: { kind: 'quickAction', id: 'buscar-laura' } }],
   };
   const file = join(dir, 'manifest.json');
   writeFileSync(file, JSON.stringify(manifest));
@@ -163,8 +169,18 @@ test('una página HTML sin framework: dos líneas, el avatar del estudio y una p
   const snapshot = await assistant.evaluate((el) => (el as HTMLElement & { registry: { snapshot(): unknown[] } }).registry.snapshot());
   expect(snapshot).toEqual([{ id: 'titulo', role: 'heading', label: 'Página simple' }]);
 
-  await assistant.getByPlaceholder(/qué hacer/).fill('¿Quién es Marco Rossi?');
-  await assistant.getByRole('button', { name: 'Enviar', exact: true }).click();
+  // The announcement from the manifest, dismissed once; the quick action from the manifest, through the loop.
+  const news = assistant.locator('.news-item');
+  await expect(news).toHaveCount(1);
+  await expect(news).toContainText('Pixel ya opera aquí');
+  await news.getByRole('button', { name: 'Entendido' }).click();
+  await expect(news).toHaveCount(0);
+  await assistant.getByRole('button', { name: '🔎 Buscar a Laura' }).click();
+  await expect(page.locator('.msg.vex').last()).toContainText('Hecho (Buscar a Laura)');
+  await expect(page.locator('.turn').last().locator('.step-text').first()).toContainText('Buscar "Laura Pérez" en contactos');
+  await expect(page.locator('.turn').last().locator('.step-state').first()).toHaveText('hecho');
+
+  await assistant.getByRole('button', { name: '¿Quién es Marco?' }).click();
   await expect(page.locator('.msg.vex').last()).toContainText('Marco Rossi');
   await expect(page.locator('.turn').last().locator('.step-state').first()).toHaveText('hecho');
 });

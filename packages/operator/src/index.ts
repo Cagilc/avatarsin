@@ -42,3 +42,5 @@ export { defineTool, toToolSpec, type AnyTool, type ToolContext, type ToolDefini
 export type { ChatMessage, Completion, CompletionRequest, ContentBlock, ModelProvider, StopReason } from './provider.ts';
 export { RUNNER_DEFAULTS, runOperator, type RunOptions, type RunResult } from './runner.ts';
 export { ScriptedProvider, missingInfo, planFor } from './providers/scripted.ts';
+export { DirectProvider, type DirectCall } from './providers/direct.ts';
+export { MAX_QUICK_ACTIONS, announcementSchema, applicable, ctaSchema, engageIdSchema, quickActionSchema, type Announcement, type AnnouncementInput, type Audience, type Cta, type QuickAction } from './schema/engage.ts';

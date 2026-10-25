@@ -42,7 +42,8 @@ packages/
   vex/              El avatar 2D: rig SVG por capas con 8 estados, 5 expresiones,
                     9 visemas y niveles de detalle. Solo depende de React.
 presets/
-  demo-negocio/     Manifiesto del host de la plataforma de demo (con él corre el banco).
+  demo-negocio/     Manifiesto del host de la plataforma de demo (con él corre el banco),
+                    con botones rápidos y un anuncio de bienvenida.
   agenda/           Un segundo host sin código propio: la agenda de citas, solo por manifiesto.
 assets/
   vex-2d/           Rig fuente (SVG + JSON con pivotes, poses, paleta) y hojas de personaje.

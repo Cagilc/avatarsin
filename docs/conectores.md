@@ -22,6 +22,7 @@ Un conector convierte una herramienta que Vex no conocía en acciones que puede 
    - **Bajar** un riesgo por debajo del sugerido exige escribir el motivo, que queda guardado.
    - Se puede escribir una **guía** para el modelo (para qué sirve, flujos típicos, trampas), de 4.000 caracteres como máximo.
    - Importar, revisar, actualizar y borrar quedan en la misma auditoría que las acciones de Vex.
+   - Activar herramientas nuevas deja un **borrador de anuncio** (`GET /engage/drafts`, solo administradores) con sus nombres y descripciones; nadie lo ve hasta publicarlo. Detalle en `docs/operador.md`.
 4. **Uso.** En el siguiente mensaje Vex ve las herramientas aprobadas, con el prefijo del conector (`citas_crear_cita`). El system prompt lista los conectores y le pide llamar a `leer_guia` antes de usar uno por primera vez: la guía entra en el contexto **solo cuando la petición la necesita**. Lo irreversible pide confirmación y la tarjeta enseña lo que va a salir: la petición HTTP exacta (método, URL y datos) o la llamada MCP (herramienta y argumentos).
 5. **Actualizar** (`POST /connectors/:id/refresh`) vuelve a leer la especificación o el servidor. Las acciones que no cambiaron conservan su revisión; las que cambiaron de contrato (entrada, ruta o descripción) **vuelven a "Sin revisar" y se desactivan**, porque lo aprobado ya no es lo que se ejecutaría. Las nuevas llegan desactivadas.
 

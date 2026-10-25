@@ -1,6 +1,6 @@
-import type { ActionOutcome, ActionRequest, Phase, Principal } from '@vex/operator';
+import type { ActionOutcome, ActionRequest, Phase, Principal, QuickAction } from '@vex/operator';
 import type { StateName } from '@vexstudio/format';
-import { OperatorClient, type OperatorInfo, type StreamEvent } from './client.ts';
+import { OperatorClient, type OperatorInfo, type StreamEvent, type VisibleAnnouncement } from './client.ts';
 import { Director, PHASE_LABEL } from './director.ts';
 import { ElementRegistry } from './registry.ts';
 import { STYLES } from './styles.ts';
@@ -78,6 +78,8 @@ export class VexAssistantElement extends HTMLElement {
   private ctx: Record<string, unknown> = {};
   private hints: string[] = [];
   private who: Principal | null = null;
+  private news: VisibleAnnouncement[] = [];
+  private actions: QuickAction[] = [];
 
   private readonly shadow: ShadowRoot;
   private readonly els: {
@@ -86,6 +88,7 @@ export class VexAssistantElement extends HTMLElement {
     label: HTMLSpanElement;
     who: HTMLSpanElement;
     log: HTMLDivElement;
+    actions: HTMLDivElement;
     form: HTMLFormElement;
     input: HTMLTextAreaElement;
     send: HTMLButtonElement;
@@ -120,9 +123,10 @@ export class VexAssistantElement extends HTMLElement {
     const send = h('button', { type: 'submit', class: 'btn primary', disabled: '' }, 'Enviar');
     const stop = h('button', { type: 'button', class: 'btn danger', hidden: '' }, 'Detener');
     const form = h('form', { class: 'composer' }, input, send, stop);
+    const actions = h('div', { class: 'quick-actions', hidden: '', role: 'toolbar', 'aria-label': 'Accesos rápidos' });
     const hint = h('p', { class: 'hint' });
-    this.shadow.append(style, head, log, form, hint);
-    this.els = { avatar, name, label, who, log, form, input, send, stop, hint };
+    this.shadow.append(style, head, log, actions, form, hint);
+    this.els = { avatar, name, label, who, log, actions, form, input, send, stop, hint };
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -162,6 +166,16 @@ export class VexAssistantElement extends HTMLElement {
   set principal(value: Principal | null) {
     this.who = value;
     this.renderHead();
+  }
+
+  /** The announcements the server gave this person (dismissed ones included). */
+  get announcements(): VisibleAnnouncement[] {
+    return this.news;
+  }
+
+  /** The quick-action buttons the server gave this person. */
+  get quickActions(): QuickAction[] {
+    return this.actions;
   }
 
   get phase(): Phase {
@@ -252,11 +266,50 @@ export class VexAssistantElement extends HTMLElement {
       this.renderComposer();
       this.renderLog();
       this.emit('vex-ready', { info, principal: this.who });
+      await this.loadEngage(info);
+      if (seq !== this.loadSeq) return;
+      this.renderActions();
+      this.renderLog();
+      this.emit('vex-engage', { announcements: this.news, quickActions: this.actions });
     } catch (err) {
       if (seq !== this.loadSeq) return;
       const message = `No llego a Vex Core (${err instanceof Error ? err.message : String(err)}).`;
       this.els.hint.replaceChildren(h('span', { class: 'error' }, message));
       this.emit('vex-error', { message });
+    }
+  }
+
+  /** Announcements and buttons, only when the host switched them on; a failure leaves the panel usable. */
+  private async loadEngage(info: OperatorInfo): Promise<void> {
+    const client = this.client;
+    if (!client) return;
+    const features = info.host.features;
+    try {
+      [this.news, this.actions] = await Promise.all([features?.announcements ? client.announcements() : Promise.resolve([]), features?.quickActions ? client.quickActions() : Promise.resolve([])]);
+    } catch (err) {
+      this.emit('vex-error', { message: `Novedades: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  /** Presses a quick action: a prompt goes to the chat; a tool runs through the operator loop. */
+  async runQuickAction(id: string): Promise<void> {
+    const action = this.actions.find((q) => q.id === id);
+    if (!action || this.busy || !this.client) return;
+    if (action.prompt !== undefined) return this.send(action.prompt);
+    const client = this.client;
+    await this.runTurn(`Botón: ${action.label}`, (onEvent) => client.runQuickAction(action.id, { ...(this.session ? { sessionId: this.session } : {}), context: this.ctx }, onEvent));
+  }
+
+  /** "Entendido": the announcement leaves the tray and the server remembers it for this person. */
+  async dismiss(id: string): Promise<void> {
+    const item = this.news.find((n) => n.id === id);
+    if (!item || item.seen) return;
+    item.seen = true;
+    this.renderLog();
+    try {
+      await this.client?.markSeen(id);
+    } catch {
+      // Seen on this page anyway; the server will offer it again next time.
     }
   }
 
@@ -293,6 +346,12 @@ export class VexAssistantElement extends HTMLElement {
   async send(message: string): Promise<void> {
     const text = message.trim();
     if (!text || this.busy || !this.client) return;
+    const client = this.client;
+    await this.runTurn(text, (onEvent) => client.chat({ ...(this.session ? { sessionId: this.session } : {}), message: text, context: this.ctx }, onEvent));
+  }
+
+  /** One turn of the conversation, whatever started it: the stream's events drive the log and the phases. */
+  private async runTurn(text: string, start: (onEvent: (event: StreamEvent) => void) => Promise<void>): Promise<void> {
     const turnId = crypto.randomUUID();
     const turn: Turn = { id: turnId, user: text, reply: '', steps: [], done: false };
     this.turns.push(turn);
@@ -354,7 +413,7 @@ export class VexAssistantElement extends HTMLElement {
     };
 
     try {
-      await this.client.chat({ ...(this.session ? { sessionId: this.session } : {}), message: text, context: this.ctx }, onEvent);
+      await start(onEvent);
       const allOk = !turn.error && !turn.cancelled && turn.steps.length > 0 && turn.steps.every((s) => s.outcome === 'ok');
       this.busy = false;
       this.pending = null;
@@ -410,12 +469,48 @@ export class VexAssistantElement extends HTMLElement {
     this.els.send.hidden = this.busy;
     this.els.send.disabled = !ready;
     this.els.stop.hidden = !this.busy;
+    for (const b of this.els.actions.querySelectorAll('button')) b.disabled = !ready || this.busy;
     this.renderHead();
+  }
+
+  private renderActions(): void {
+    const row = this.els.actions;
+    row.replaceChildren();
+    for (const q of this.actions) {
+      const b = h('button', { type: 'button', class: 'quick-action', 'data-id': q.id, title: q.tool ? `Herramienta: ${q.tool}` : 'Pregunta al chat' }, q.icon ? `${q.icon} ${q.label}` : q.label);
+      b.disabled = this.busy || this.client === null;
+      b.addEventListener('click', () => void this.runQuickAction(q.id));
+      row.appendChild(b);
+    }
+    row.hidden = this.actions.length === 0;
   }
 
   private renderLog(): void {
     const log = this.els.log;
     const frag = document.createDocumentFragment();
+    const unseen = this.news.filter((n) => !n.seen);
+    if (unseen.length > 0) {
+      // Plain text from the administrator, built as text nodes: never HTML.
+      const tray = h('div', { class: 'news', role: 'region', 'aria-label': 'Novedades' });
+      for (const n of unseen) {
+        const item = h('article', { class: 'news-item', 'data-id': n.id }, h('strong', {}, n.title), h('p', {}, n.body));
+        const actions = h('div', { class: 'news-actions' });
+        if (n.cta?.kind === 'quickAction') {
+          const id = n.cta.id;
+          const go = h('button', { type: 'button', class: 'btn primary' }, this.actions.find((q) => q.id === id)?.label ?? 'Probar');
+          go.addEventListener('click', () => void this.runQuickAction(id));
+          actions.appendChild(go);
+        } else if (n.cta?.kind === 'link') {
+          actions.appendChild(h('a', { class: 'btn', href: n.cta.url, target: '_blank', rel: 'noopener noreferrer' }, n.cta.label));
+        }
+        const ok = h('button', { type: 'button', class: 'btn' }, 'Entendido');
+        ok.addEventListener('click', () => void this.dismiss(n.id));
+        actions.appendChild(ok);
+        item.appendChild(actions);
+        tray.appendChild(item);
+      }
+      frag.appendChild(tray);
+    }
     if (this.turns.length === 0) {
       const empty = h('div', { class: 'empty' }, h('p', {}, 'Pídeme algo sobre la plataforma.' + (this.hints.length ? ' Por ejemplo:' : '')));
       for (const s of this.hints) {

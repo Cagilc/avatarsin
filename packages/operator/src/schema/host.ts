@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { riskSchema, type Driver, type Risk } from './action.ts';
+import { announcementSchema, quickActionSchema } from './engage.ts';
 import { decide, type PermissionPolicy, permissionPolicySchema } from './policy.ts';
 
 /**
@@ -77,29 +78,38 @@ export type HostAvatar = z.infer<typeof hostAvatarSchema>;
 /** Reserved for later workflows: a manifest may name them but not fill them yet. */
 const reserved = (what: string) => z.array(z.unknown()).max(0, `${what}: llega en un paso posterior; deja la lista vacía.`).optional();
 
-export const hostManifestSchema = z.strictObject({
-  format: z.literal('vex-host'),
-  version: z.literal(1),
-  host: z.strictObject({
-    /** How the prompt names the platform ("el operador de <name>"). */
-    name: z.string().min(1).max(80),
-    /** The platform's hostname. A grant whose origins do not include it is not for this host. */
-    domain: hostnameSchema,
-  }),
-  avatar: hostAvatarSchema.optional(),
-  connectors: z
-    .array(hostConnectorSchema)
-    .max(50)
-    .default([])
-    .refine((list) => new Set(list.map((c) => c.id)).size === list.length, 'ids de conector repetidos'),
-  /** The host's own permission policy. Default: the operator's (platform and reviewed connectors, confirm the irreversible). */
-  policy: permissionPolicySchema.optional(),
-  screenContext: screenContextSchema.default({}),
-  features: hostFeaturesSchema.prefault({}),
-  tours: reserved('tours'),
-  announcements: reserved('announcements'),
-  quickActions: reserved('quickActions'),
-});
+const uniqueIds = (list: Array<{ id: string }>) => new Set(list.map((c) => c.id)).size === list.length;
+
+export const hostManifestSchema = z
+  .strictObject({
+    format: z.literal('vex-host'),
+    version: z.literal(1),
+    host: z.strictObject({
+      /** How the prompt names the platform ("el operador de <name>"). */
+      name: z.string().min(1).max(80),
+      /** The platform's hostname. A grant whose origins do not include it is not for this host. */
+      domain: hostnameSchema,
+    }),
+    avatar: hostAvatarSchema.optional(),
+    connectors: z.array(hostConnectorSchema).max(50).default([]).refine(uniqueIds, 'ids de conector repetidos'),
+    /** The host's own permission policy. Default: the operator's (platform and reviewed connectors, confirm the irreversible). */
+    policy: permissionPolicySchema.optional(),
+    screenContext: screenContextSchema.default({}),
+    features: hostFeaturesSchema.prefault({}),
+    tours: reserved('tours'),
+    /** Shown only with `features.announcements`; presentation data, served to the page by Vex Core. */
+    announcements: z.array(announcementSchema).max(50).default([]).refine(uniqueIds, 'ids de anuncio repetidos'),
+    /** Shown only with `features.quickActions`; a tool button runs through policy and confirmation. */
+    quickActions: z.array(quickActionSchema).max(12).default([]).refine(uniqueIds, 'ids de botón repetidos'),
+  })
+  .refine(
+    (m) =>
+      m.announcements.every((a) => {
+        const cta = a.cta;
+        return cta?.kind !== 'quickAction' || m.quickActions.some((q) => q.id === cta.id);
+      }),
+    { message: 'un anuncio apunta a un botón que no existe', path: ['announcements'] },
+  );
 export type HostManifest = z.infer<typeof hostManifestSchema>;
 export type HostManifestInput = z.input<typeof hostManifestSchema>;
 

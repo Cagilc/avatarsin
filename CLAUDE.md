@@ -48,8 +48,8 @@ Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
 - Para probar conectores sin clave: orden directa `usa <herramienta> {json}` del modo guion.
 
 ## Siguiente
-El orden está en `docs/plan-maestro.md`. Hechos el paso 1 (manifiesto, propuestas, regla de permisos y lectura del *grant*) y el paso 2 (`<vex-assistant>`, registro de elementos, personalidad publicada en el prompt, Vex en el formato del estudio).
-- Paso 3: anuncios y botones rápidos (workflow 04 de Oscar): botones con herramienta pasan por política y confirmación.
+El orden está en `docs/plan-maestro.md`. Hechos el paso 1 (manifiesto, propuestas, regla de permisos y lectura del *grant*), el paso 2 (`<vex-assistant>`, registro de elementos, personalidad publicada en el prompt, Vex en el formato del estudio) y el paso 3 (anuncios y botones rápidos: un botón con herramienta corre por el mismo bucle que el modelo, con `DirectProvider`).
+- Paso 4: medir con Claude (necesita la clave en `apps/api/.env`); después tours (5) y driver DOM (6).
 - Ejecutar el banco con Claude (`pnpm eval -- --provider anthropic`) y fijar el acierto mínimo con datos.
 - Conectar el backend real: implementar `PlatformClient` y `TokenService.verify` contra el JWT de la plataforma.
 - Conectores: búsqueda de herramientas bajo demanda cuando haya muchas; OpenAPI en YAML; OAuth por usuario.

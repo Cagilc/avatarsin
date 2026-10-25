@@ -35,7 +35,7 @@ describe('host manifest', () => {
     expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' } }, { id: 'citas', source: { kind: 'mcp-http', url: 'https://y' } }] }).success).toBe(false);
   });
 
-  it('keeps tours, announcements and quick actions reserved until their workflow exists', () => {
+  it('keeps tours reserved until their workflow exists', () => {
     expect(hostManifestSchema.parse({ ...MINIMAL, tours: [] }).tours).toEqual([]);
     const r = hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'bienvenida' }] });
     expect(r.success).toBe(false);

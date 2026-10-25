@@ -112,7 +112,7 @@ describe('connectors in Vex Core', () => {
     expect(ok.statusCode).toBe(200);
     expect(await toolNames()).toEqual(expect.arrayContaining(['citas_listar_huecos', 'citas_crear_cita', 'citas_enviar_recordatorio', 'leer_guia']));
     const audit = (await app.inject({ method: 'GET', url: '/operator/audit?sessionId=admin', headers: admin })).json() as Array<{ tool: string; summary: string }>;
-    expect(audit.map((a) => a.tool)).toEqual(['importar_conector', 'revisar_conector']);
+    expect(audit.map((a) => a.tool)).toEqual(['importar_conector', 'revisar_conector', 'borrador_anuncio']);
     expect(audit[1]?.summary).toBe('Revisar Agenda de citas: 6 activadas, 0 desactivadas');
   });
 

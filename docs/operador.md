@@ -62,7 +62,8 @@ Lo que una plataforma declara sobre sí misma para que Vex la opere, en un JSON 
 | `policy` | La política de permisos del host. Lo que la política deniega ni siquiera se ofrece al modelo. |
 | `avatar` | El avatar publicado por el estudio para esta integración: `endpoint`, `publicKey` y `keyId`. Con él, Vex Core pide el *grant* firmado y lo aplica (abajo). |
 | `features` | Interruptores de los pasos siguientes (tours, anuncios, botones rápidos, driver DOM). Todos apagados; con todo apagado, las herramientas y la política son idénticas a las de un servidor sin manifiesto (hay un test que lo compara). |
-| `tours`, `announcements`, `quickActions` | Reservados: un manifiesto puede nombrarlos, pero hoy deben estar vacíos. |
+| `announcements`, `quickActions` | Novedades y accesos rápidos (paso 3, sección propia más abajo). |
+| `tours` | Reservado: un manifiesto puede nombrarlo, pero hoy debe estar vacío. |
 
 Un manifiesto que no valida para el arranque con el fichero, el campo y el motivo (`VEX_HOST_MANIFEST: …/manifest.json: manifiesto del host no válido. host.name: …`).
 
@@ -88,6 +89,24 @@ Todo el panel del operador en una etiqueta, sin framework (`packages/assistant`,
 - **Registro de elementos** (`registry.ts`). Vex solo sabe de los elementos que el host le presenta: `data-vex-id="…"` en el marcado (con `data-vex-risk` opcional) o `registry.register(id, el, { risk, label })` desde código. `registry.snapshot()` describe cada uno (rol, etiqueta, valor o texto; 200 como máximo). **Los campos privados nunca se leen**: lo marcado con `data-vex-private`, lo que cuelga de ello y los campos que son secretos por su propio tipo (contraseñas, `hidden`, archivos, `autocomplete` de tarjetas y códigos de un solo uso) quedan fuera del todo, id incluido; la prueba lo demuestra con campos que lanzan si alguien lee su valor. Hoy nadie consume la instantánea: es la base de los tours y del driver DOM de los pasos siguientes.
 - La **demo React** usa la misma etiqueta (`apps/operator-demo`): las listas y la selección del contexto siguen en React; el panel es `<vex-assistant>` con el token, el contexto y las sugerencias puestos por propiedades. El e2e del operador (`pnpm e2e`) pasa sin tocar sus selectores. Una página sin nada de framework está en `examples/asistente.html`.
 - **Comprobado en navegador** (`pnpm e2e:studio`, `tests/asistente.spec.ts`): se diseña y publica un avatar en el estudio, se crea su integración, la prueba escribe un manifiesto que la nombra y arranca un Vex Core con él; el avatar se dibuja en la demo con el nombre publicado, cambia de estado al esperar el OK y al terminar, y una página HTML simple lo usa con dos líneas y deja fuera un campo de contraseña del registro.
+
+## Anuncios y botones rápidos (paso 3 del plan maestro)
+
+Lo que un host enseña a sus usuarios **sin modelo**: novedades y accesos rápidos. Vienen del manifiesto (`announcements`, `quickActions`; esquemas en `packages/operator/src/schema/engage.ts`), se filtran por el **rol del token** y por fechas (`since`, `until`), y solo se sirven con `features.announcements` / `features.quickActions` encendidos: apagados, las rutas devuelven vacío y el panel no enseña nada.
+
+| Ruta | Quién | Qué |
+|---|---|---|
+| `GET /engage/announcements` | usuario | Los anuncios de su rol y del momento, con `seen` |
+| `POST /engage/announcements/:id/seen` | usuario | «Entendido»: no vuelve a salir para esa persona |
+| `GET /engage/quick-actions` | usuario | Sus botones (máximo 6); un botón con herramienta solo si el bucle podría ejecutarla (política y *grant*) |
+| `POST /engage/quick-actions/:id/run` | usuario | Un botón de **prompt** es un mensaje al chat; un botón con **herramienta** corre por el mismo bucle que una llamada del modelo (`DirectProvider`): validación, política, confirmación con la vista previa real, auditoría e historial. Devuelve el mismo SSE que `/operator/chat`. Herramienta denegada: 403 y una línea `denied` en la auditoría |
+| `GET /engage/drafts` · `POST /engage/announcements/:id/publish` · `DELETE /engage/announcements/:id` | admin | Borradores de anuncio y su publicación |
+
+**Borradores desde conectores.** Cuando una revisión activa herramientas nuevas (o las reactiva tras un cambio de contrato), Vex Core guarda un **borrador** de anuncio (`source: connector`) con los nombres y descripciones aprobados; queda en la auditoría como `borrador_anuncio`. Nadie lo ve hasta que un administrador lo publica, con el título y el texto que quiera. Los anuncios del manifiesto se editan en el manifiesto; los publicados desde borradores viven en el almacén (SQLite) junto al estado «visto» por persona.
+
+**El modelo también las conoce.** Las novedades para todos (sin `roles`) entran en el system prompt como avisos del administrador, nunca como órdenes, para que Vex responda a «¿qué hay de nuevo?».
+
+**En el panel.** `<vex-assistant>` pide anuncios y botones al conectar: los no vistos salen en una bandeja al principio de la conversación (texto plano, construido como nodos de texto: nunca HTML), con su acción (`cta`: un botón rápido o un enlace https) y «Entendido»; los botones van en una fila sobre el cuadro de texto. Un botón de prompt es `send(prompt)`; uno de herramienta, `runQuickAction(id)`. `presets/demo-negocio` trae tres botones y un anuncio de bienvenida. Pruebas: `apps/api/src/engage.test.ts` (por HTTP: rol, visto una vez, botón por el bucle con confirmación real, botón denegado, borradores) y el e2e de la página simple.
 
 **Vex en el formato del estudio.** El avatar dibujado a mano (`assets/vex-2d`) entra ahora en el estudio con «Probar con Vex, el operador»: `apps/studio/scripts/vex-sample.ts` aplana el rig anidado en 37 grupos (`public/samples/vex.svg`) y `packages/format/src/samples/vex.ts` les pone el esqueleto, los pivotes, las poses como clips de los 8 estados y las **caras y visemas**: cada variante de ojos y de boca es una pieza, y los clips las encienden con pistas de opacidad a saltos; `talk` turna los nueve visemas. No hizo falta cambiar el formato. `packages/vex` (React) sigue solo para el laboratorio `#estados`.
 

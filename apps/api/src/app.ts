@@ -3,10 +3,11 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
-import { decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
+import { DirectProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
+import { Engage } from './engage.ts';
 import { GrantClient, type GrantState } from './grant.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
@@ -107,6 +108,13 @@ const confirmBody = z.object({
 
 const stopBody = z.object({ sessionId: z.string().min(1) });
 
+const runBody = z.object({
+  sessionId: z.string().min(1).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
+});
+
+const publishBody = z.object({ title: z.string().min(1).max(120).optional(), body: z.string().min(1).max(2000).optional() });
+
 const demoLoginBody = z.object({ userId: z.string().min(1) });
 
 /** A neutral completion request from a host that runs the loop itself (Vex Studio). */
@@ -158,7 +166,14 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const state = await grantState();
     return state?.status === 'ok' && state.personality ? state.personality : personality;
   };
-  const currentSystem = async (): Promise<string> => buildSystemPrompt(await currentPersonality(), host, registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })));
+  const engage = new Engage({ manifest, store });
+  const currentSystem = async (): Promise<string> =>
+    buildSystemPrompt(
+      await currentPersonality(),
+      host,
+      registry.live().map((m) => ({ id: m.id, name: m.name, description: m.description })),
+      engage.forPrompt(),
+    );
   const assistantJs = opts.assistantBundle && existsSync(opts.assistantBundle) ? readFileSync(opts.assistantBundle, 'utf8') : null;
   const sessions = new SessionStore(store);
   const confirmTimeoutMs = opts.confirmTimeoutMs ?? 5 * 60_000;
@@ -252,15 +267,11 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   }
 
   // --- Operator ---
-  app.post('/operator/chat', async (req, reply) => {
-    const principal = principalOf(req, reply);
-    if (!principal) return undefined;
-    const body = chatBody.safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
-
+  /** One operator run streamed over SSE: a chat message, or a quick action through the very same loop. */
+  const streamRun = async (req: FastifyRequest, reply: FastifyReply, principal: Principal, body: { sessionId?: string | undefined; context?: Record<string, unknown> | undefined }, run: { userMessage: string; provider: ModelProvider }) => {
     let session;
     try {
-      session = sessions.getOrCreate(body.data.sessionId, principal);
+      session = sessions.getOrCreate(body.sessionId, principal);
     } catch (err) {
       return reply.code(403).send({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -291,13 +302,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     try {
       await runOperator({
         sessionId: session.id,
-        provider: opts.provider,
+        provider: run.provider,
         tools: await currentTools(),
         policy,
         principal,
-        context: body.data.context ?? {},
+        context: body.context ?? {},
         history: session.history,
-        userMessage: body.data.message,
+        userMessage: run.userMessage,
         system: await currentSystem(),
         emit: send,
         confirm: (action) => sessions.waitForConfirmation(session, action, confirmTimeoutMs),
@@ -314,6 +325,54 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       reply.raw.end();
     }
     return reply;
+  };
+
+  app.post('/operator/chat', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    const body = chatBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
+    return streamRun(req, reply, principal, body.data, { userMessage: body.data.message, provider: opts.provider });
+  });
+
+  // --- Announcements and quick actions: presentation data, served by the role in the token ---
+  app.get('/engage/announcements', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    return engage.announcementsFor(principal);
+  });
+
+  app.post('/engage/announcements/:id/seen', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    if (!engage.markSeen(principal, (req.params as { id: string }).id)) return reply.code(404).send({ error: 'No hay ningún anuncio con ese id para ti.' });
+    return { ok: true };
+  });
+
+  app.get('/engage/quick-actions', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    const permitted = new Set((await currentTools()).map((t) => t.name));
+    return engage.quickActionsFor(principal, permitted);
+  });
+
+  // A tool button is a one-call run through the operator loop: policy, confirmation, audit, history.
+  app.post('/engage/quick-actions/:id/run', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    const body = runBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
+    const id = (req.params as { id: string }).id;
+    const action = engage.quickActionsOn ? engage.quickAction(id) : undefined;
+    if (!action || applicable([action], { role: principal.role, nowMs: Date.now() }).length === 0) return reply.code(404).send({ error: 'No hay ningún botón con ese id para ti.' });
+    if (action.tool === undefined) return streamRun(req, reply, principal, body.data, { userMessage: action.prompt ?? action.label, provider: opts.provider });
+    const tool = action.tool;
+    if (!(await currentTools()).some((t) => t.name === tool)) {
+      const reason = `La política no permite ${tool}.`;
+      store.recordAudit({ ts: new Date().toISOString(), sessionId: body.data.sessionId ?? 'boton', principal, actionId: crypto.randomUUID(), tool, driver: 'platform', risk: 'read', params: action.params ?? {}, summary: `Botón «${action.label}»`, outcome: 'denied', error: reason, durationMs: 0 });
+      return reply.code(403).send({ error: reason });
+    }
+    return streamRun(req, reply, principal, body.data, { userMessage: `Botón: ${action.label}`, provider: new DirectProvider({ tool, params: action.params ?? {}, label: action.label }) });
   });
 
   app.post('/operator/confirm', async (req, reply) => {
@@ -419,9 +478,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (!principal) return undefined;
     try {
       const body = reviewBody.parse(req.body);
-      const m = registry.review((req.params as { id: string }).id, body, principal.id);
+      const before = registry.get((req.params as { id: string }).id);
+      const m = registry.review(before.id, body, principal.id);
       const on = body.decisions.filter((d) => d.enabled).length;
       auditAdmin(principal, 'revisar_conector', { id: m.id, decisiones: body.decisions }, `Revisar ${m.name}: ${on} activadas, ${body.decisions.length - on} desactivadas`);
+      // Tools switched on are news: a draft announcement waits for an administrator to publish it.
+      const draft = engage.draftFromReview(before, m, principal.id);
+      if (draft) auditAdmin(principal, 'borrador_anuncio', { id: draft.id, conector: m.id }, `Borrador de anuncio: ${draft.title}`);
       return m;
     } catch (err) {
       return fail(reply, err);
@@ -451,6 +514,32 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     } catch (err) {
       return fail(reply, err);
     }
+  });
+
+  // Announcement drafts: administrators review what connector approvals wrote before anyone sees it.
+  app.get('/engage/drafts', async (req, reply) => {
+    if (!adminOf(req, reply)) return undefined;
+    return engage.drafts();
+  });
+
+  app.post('/engage/announcements/:id/publish', async (req, reply) => {
+    const principal = adminOf(req, reply);
+    if (!principal) return undefined;
+    const body = publishBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
+    const published = engage.publish((req.params as { id: string }).id, body.data, principal.id);
+    if (!published) return reply.code(404).send({ error: 'No hay ningún borrador con ese id.' });
+    auditAdmin(principal, 'publicar_anuncio', { id: published.id }, `Publicar el anuncio «${published.title}»`);
+    return published;
+  });
+
+  app.delete('/engage/announcements/:id', async (req, reply) => {
+    const principal = adminOf(req, reply);
+    if (!principal) return undefined;
+    const id = (req.params as { id: string }).id;
+    if (!engage.remove(id)) return reply.code(404).send({ error: 'No hay ningún anuncio guardado con ese id (los del manifiesto se editan en el manifiesto).' });
+    auditAdmin(principal, 'borrar_anuncio', { id }, `Borrar el anuncio ${id}`);
+    return { ok: true };
   });
 
   app.get('/operator/audit', async (req, reply) => {

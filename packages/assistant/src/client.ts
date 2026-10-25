@@ -1,4 +1,4 @@
-import type { OperatorEvent, Principal, VexPersonality } from '@vex/operator';
+import type { Announcement, OperatorEvent, Principal, QuickAction, VexPersonality } from '@vex/operator';
 
 /** What GET /operator/info says, as far as the panel needs it. */
 export interface OperatorInfo {
@@ -7,11 +7,14 @@ export interface OperatorInfo {
   host: {
     name: string;
     manifest: boolean;
+    features?: { tours: boolean; announcements: boolean; quickActions: boolean; domDriver: boolean };
     /** The avatar published by the studio for this host, when the manifest names one. */
     avatar?: { endpoint: string; publicKey: string; keyId: string };
   };
   tools: Array<{ name: string; driver: string; risk: string; description: string }>;
 }
+
+export type VisibleAnnouncement = Announcement & { seen: boolean };
 
 export type StreamEvent = OperatorEvent | { type: 'session'; sessionId: string };
 
@@ -54,9 +57,32 @@ export class OperatorClient {
     return json(await fetch(`${this.api}/operator/stop`, { method: 'POST', headers: await this.headers(), body: JSON.stringify({ sessionId }) }));
   }
 
+  /** The announcements this person may see, with whether they dismissed each. Empty when the host has them off. */
+  async announcements(): Promise<VisibleAnnouncement[]> {
+    return json(await fetch(`${this.api}/engage/announcements`, { headers: await this.headers() }));
+  }
+
+  async markSeen(id: string): Promise<void> {
+    await json(await fetch(`${this.api}/engage/announcements/${encodeURIComponent(id)}/seen`, { method: 'POST', headers: await this.headers(), body: '{}' }));
+  }
+
+  /** The quick-action buttons for this person. Empty when the host has them off. */
+  async quickActions(): Promise<QuickAction[]> {
+    return json(await fetch(`${this.api}/engage/quick-actions`, { headers: await this.headers() }));
+  }
+
+  /** Runs a tool button through the operator loop; the same SSE events as a chat message. */
+  async runQuickAction(id: string, body: { sessionId?: string; context: Record<string, unknown> }, onEvent: (event: StreamEvent) => void, signal?: AbortSignal): Promise<void> {
+    return this.stream(`${this.api}/engage/quick-actions/${encodeURIComponent(id)}/run`, body, onEvent, signal);
+  }
+
   /** POST /operator/chat and deliver each SSE event as it arrives. Resolves when the stream ends. */
   async chat(body: { sessionId?: string; message: string; context: Record<string, unknown> }, onEvent: (event: StreamEvent) => void, signal?: AbortSignal): Promise<void> {
-    const res = await fetch(`${this.api}/operator/chat`, { method: 'POST', headers: await this.headers(), body: JSON.stringify(body), ...(signal ? { signal } : {}) });
+    return this.stream(`${this.api}/operator/chat`, body, onEvent, signal);
+  }
+
+  private async stream(url: string, body: unknown, onEvent: (event: StreamEvent) => void, signal?: AbortSignal): Promise<void> {
+    const res = await fetch(url, { method: 'POST', headers: await this.headers(), body: JSON.stringify(body), ...(signal ? { signal } : {}) });
     if (!res.ok || !res.body) {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error ?? `HTTP ${res.status}`);
