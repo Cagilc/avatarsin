@@ -1,6 +1,6 @@
 # Empezar ya · guía de arranque
 
-Para retomar el trabajo sin leer todo: 10 minutos.
+Para retomar el trabajo sin leer todo: 10 minutos. Primero marca tus elecciones en `DECISIONES.md`.
 
 ## Orden
 

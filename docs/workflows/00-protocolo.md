@@ -1,6 +1,6 @@
 # Workflows · protocolo de ejecución
 
-Empieza por `README.md` (arranque en 10 minutos). Ideas adicionales priorizadas: `backlog.md`.
+Empieza por `DECISIONES.md` (qué elige César) y `README.md` (arranque en 10 minutos). Ideas adicionales priorizadas: `backlog.md`.
 
 Cinco workflows que llevan a Vex de «operador de un negocio concreto» a «asistente que se acopla a cualquier plataforma» (visión y razones: `docs/plan-host-agnostico.md`). Cada fichero `01…05` es un encargo **autocontenido** para un agente: se le pasa ese fichero, `CLAUDE.md` y nada más.
 
