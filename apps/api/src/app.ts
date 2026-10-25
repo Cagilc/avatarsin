@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
 import { riskSchema, runOperator, type AnyTool, type ChatMessage, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
-import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
+import { checkOutboundUrl, guardedFetch, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
@@ -50,6 +50,8 @@ export interface AppOptions {
     /** Which URLs an administrator may import from. Default: https only, no private networks. */
     urlPolicy?: UrlPolicy;
     fetch?: typeof fetch;
+    /** Hostname resolver for the outbound guard. Default: the system resolver. */
+    resolve?: (hostname: string) => Promise<string[]>;
   };
   logger?: boolean;
 }
@@ -112,12 +114,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const personality = opts.personality ?? DEFAULT_PERSONALITY;
   const hostName = opts.hostName ?? 'la plataforma';
   const platform: AnyTool[] = platformTools(opts.platform);
+  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
+  // Every request to an imported service goes through the same guard: names are resolved, redirects re-checked.
+  const outboundFetch = guardedFetch({ policy: urlPolicy, ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}), ...(opts.connectors?.resolve ? { resolve: opts.connectors.resolve } : {}) });
   const registry = new ConnectorRegistry({
     store,
     env: opts.connectors?.env ?? process.env,
     mcpAllow: opts.connectors?.mcpAllow ?? [],
     checkUrl: (url) => checkOutboundUrl(url, urlPolicy),
-    ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}),
+    fetch: outboundFetch,
   });
   /** Recomputed per message: a review takes effect on the next request, not mid-run. */
   const currentTools = (): AnyTool[] => [...platform, registry.guideTool(), ...registry.tools()];
@@ -129,7 +134,6 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const providerProxy = opts.enableProviderProxy ?? false;
   const tokens = opts.tokens ?? TokenService.ephemeral();
   const allowedOrigins = opts.allowedOrigins ?? [];
-  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
 
   const principalOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
     const principal = tokens.verify(bearer(req.headers.authorization));
