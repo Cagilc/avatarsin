@@ -1,8 +1,15 @@
-# avataarsin · Vex, el operador con avatar
+# Vex · el operador con avatar y su estudio
 
 Vex es un avatar animado que **ejecuta acciones** en una plataforma de negocio en nombre del usuario que ha iniciado sesión: busca contactos, abre expedientes, crea tareas para un equipo, redacta y envía correos. Encadena los pasos, pide confirmación para lo irreversible y deja registro de todo. El avatar refleja en qué fase está (pensando, trabajando, esperando tu OK, hablando).
 
-Este repositorio contiene el prototipo funcional y los assets del avatar. Hecho hasta ahora: el operador con sus contratos y Vex Core (Hitos 0 y 1 de la hoja de ruta), la puesta a punto (parada, confirmaciones con el contenido real, persistencia, banco de encargos, pruebas en navegador e integración continua), los conectores para aprender herramientas nuevas con aprobación humana, y el endurecimiento de seguridad descrito en `docs/seguridad.md`. Pendiente: conectar el backend real y medir con Claude.
+Este repositorio une las dos partes, cada una con su historia:
+
+- **El operador** (antes `avataarsin`): el bucle, los conectores, la seguridad y la demo.
+- **El estudio de avatares** (antes `vex-avatar-studio`): herramienta privada para diseñar avatares a partir de un logo y publicarlos firmados. Diseño en `docs/diseno.md`.
+
+Es un repositorio local de prueba para ver si la fusión es viable; los dos originales siguen intactos.
+
+El operador contiene el prototipo funcional y los assets del avatar. Hecho hasta ahora: el operador con sus contratos y Vex Core (Hitos 0 y 1 de la hoja de ruta), la puesta a punto (parada, confirmaciones con el contenido real, persistencia, banco de encargos, pruebas en navegador e integración continua), los conectores para aprender herramientas nuevas con aprobación humana, y el endurecimiento de seguridad descrito en `docs/seguridad.md`. Pendiente: conectar el backend real y medir con Claude.
 
 ## Estructura
 
@@ -17,8 +24,14 @@ apps/
   api/evals/        Banco de encargos: casos, ejecutor e informes.
   sample-tools/     Herramientas "de terceros" para probar conectores: una agenda de citas
                     descrita con OpenAPI y un tablón de notas como servidor MCP.
-e2e/                Pruebas en navegador real con Playwright.
+  server/           Estudio: servidor privado (cuentas, historial, subida saneada,
+                    asistente, publicación firmada, integraciones por dominio).
+  studio/           Estudio: editor (logo, esqueleto, física, materiales, personalidad).
+e2e/                Pruebas en navegador real del operador.
+e2e-studio/         Pruebas en navegador real del estudio, con una web de otro dominio.
 packages/
+  format/           Estudio: documento del avatar, operaciones, firma Ed25519.
+  runtime/          Estudio: dibujo, esqueleto, muelles, materiales y <vex-avatar>.
   operator/         Contratos (Zod) y el bucle del operador, sin SDK de ningún proveedor.
   connectors/       Conectores: importar OpenAPI o MCP, riesgo sugerido, revisión humana,
                     validación de entradas y ejecución. Cliente MCP propio (stdio y HTTP).
@@ -28,6 +41,7 @@ assets/
   vex-2d/           Rig fuente (SVG + JSON con pivotes, poses, paleta) y hojas de personaje.
   vex-3d/           Modelo GLB con 8 clips de animación, visor Three.js y exportador.
 docs/
+  diseno.md                   Estudio de avatares: diseño, seguridad y siguientes fases.
   operador.md                 Cómo funciona el prototipo y cómo conectar un backend real.
   conectores.md               Cómo aprende Vex una herramienta nueva, con aprobación humana.
   seguridad.md                Modelo de amenazas: qué protege a Vex, cómo se comprueba y qué falta.
@@ -44,6 +58,13 @@ pnpm dev:api     # Vex Core en http://127.0.0.1:8787
 pnpm dev:demo    # demo en http://localhost:5174
 ```
 
+Estudio de avatares (necesita `pnpm build` una vez, para el script `<vex-avatar>`):
+
+```bash
+pnpm dev:studio-server   # http://127.0.0.1:8788
+pnpm dev:studio          # http://localhost:5180 (entrada de desarrollo solo en este equipo)
+```
+
 En local no hace falta configurar nada más: el login de demo y el proxy del modelo se activan solos cuando el servidor escucha en `127.0.0.1`. Para un servidor público, copia `apps/api/.env.example` a `apps/api/.env` y rellena al menos `CORS_ORIGIN` (las páginas que pueden llamar a Vex) y `VEX_TOKEN_SECRET`; `docs/seguridad.md` lista el resto.
 
 Sin clave de Anthropic, Vex Core arranca en **modo guion**: un planificador determinista por palabras clave que ejecuta peticiones como "Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación", pero no conversa. Para usar Claude, copia `apps/api/.env.example` a `apps/api/.env` y pon la clave; el modelo por defecto es `claude-opus-5-5`.
@@ -54,7 +75,8 @@ Comprobaciones:
 pnpm typecheck
 pnpm test                            # contratos, bucle, conectores, API y puerta del banco
 pnpm eval -- --provider scripted     # banco de 28 encargos (15 en modo guion)
-pnpm e2e                             # 9 pruebas en navegador real (en Windows usa Edge)
+pnpm e2e                             # 9 pruebas del operador en navegador real (en Windows usa Edge)
+pnpm e2e:studio                      # 4 recorridos del estudio, con incrustación en otro dominio
 ```
 
 **Conectar una herramienta nueva:** arranca la agenda de muestra (`pnpm dev:citas`), abre `http://localhost:5174/#conectores`, pulsa Importar, revisa el riesgo de cada acción, activa lo que quieras y guarda. Desde el chat: `usa citas_listar_huecos {"fecha":"2026-10-27"}`, o en lenguaje natural si hay clave de Claude. Detalle y reglas en `docs/conectores.md`.

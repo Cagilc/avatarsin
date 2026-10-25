@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Typecheck, tests, scripted eval and browser e2e
+    name: Typecheck, tests, scripted eval and browser e2e (operator and studio)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,6 +55,11 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Studio end-to-end tests (embedding on another origin)
+        run: pnpm e2e:studio
+        env:
+          CI: 'true'
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -63,6 +68,8 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
+            e2e-studio/test-results
+            e2e-studio/screens
           retention-days: 14
           if-no-files-found: ignore
 

@@ -1,7 +1,7 @@
 {
-  "name": "avataarsin",
+  "name": "vex",
   "private": true,
-  "description": "Vex: an animated avatar that operates a business platform (agent loop, typed tools, permissions, audit) and the hosts that embed it.",
+  "description": "Vex: the operator with an avatar (agent loop, typed tools, permissions, audit, connectors) and the private studio that designs its avatars and publishes them as signed packages.",
   "packageManager": "pnpm@10.34.7",
   "engines": {
     "node": ">=24"
@@ -9,11 +9,15 @@
   "scripts": {
     "dev:api": "pnpm --filter @vex/api dev",
     "dev:demo": "pnpm --filter @vex/operator-demo dev",
+    "dev:citas": "pnpm --filter @vex/sample-tools citas",
+    "dev:studio-server": "pnpm --filter @vexstudio/server dev",
+    "dev:studio": "pnpm --filter @vexstudio/studio dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "e2e": "pnpm --filter @vex/e2e e2e",
+    "e2e:studio": "pnpm --filter @vexstudio/e2e e2e",
     "eval": "pnpm --filter @vex/api eval",
-    "dev:citas": "pnpm --filter @vex/sample-tools citas"
+    "user:add": "pnpm --filter @vexstudio/server user:add"
   }
 }
