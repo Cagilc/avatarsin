@@ -113,6 +113,12 @@ Mejoras:
 - Requiere que César ponga su clave en los `.env`. Banco del operador con Claude y banco nuevo del asistente del estudio; fijar mínimos con datos.
 
 ### Paso 5 · Tours y onboarding (workflow 03) con poses del estudio
+- **Hecho el 2026-10-25** en la rama local `wf/05-tours` (antes que el paso 4, que espera la clave). Puertas: tipado OK, 218 pruebas (operator 44, format 22, runtime 12, connectors 16, server 32, api 77, assistant 15), banco 15/15, e2e del operador 9/9, e2e del estudio 8/8 (45 s), `salud.js` limpio. Decisiones tomadas al hacerlo:
+  - `point` y `celebrate` son estados del **formato** (10 en total), con animación de partida, etiqueta en el editor y clip en la muestra de Vex. Nada en `assets/vex-2d`.
+  - «Señalar hacia» lo calcula el runtime: atributo `aim` (grados en pantalla) en `<vex-avatar>`; `packages/runtime/src/aim.ts` gira el brazo del lado del objetivo hasta esa dirección, encima del clip. Probado con un rig de dos brazos.
+  - Contrato del tour en el manifiesto (`schema/tour.ts`): pasos con `target` opcional, `say`, `pose`, `advanceOn` (`next`/`click`/`input`), `when` (`manual`/`first`). Rutas `GET /engage/tours` y `POST /engage/tours/:id/done`; lo completado se guarda por persona.
+  - Motor determinista en `packages/assistant/src/tour.ts` (no en un paquete aparte): un `target` ausente se salta y se anota; saltar no completa. La puesta en escena vive en `<vex-assistant>`: halo sin clics, burbuja accesible, mascota que viaja (sin viaje con `prefers-reduced-motion`), `Escape` sale, celebración al terminar.
+  - Fuera de este paso: logros y puntos, borradores de tour con IA (tras el paso 4) y el laboratorio `#estados` del avatar antiguo (sigue con sus 8 poses).
 
 ### Paso 6 · Driver DOM con defensa de inyección (workflow 05)
 - Solo tras el paso 4 (cifras con Claude de los casos hostiles).

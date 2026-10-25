@@ -28,7 +28,7 @@ export const ROLE_LABEL: Record<(typeof ROLES)[number], string> = {
   body: 'Cuerpo', head: 'Cabeza', face: 'Cara', eye: 'Ojo', mouth: 'Boca', arm: 'Brazo', hand: 'Mano', leg: 'Pierna', ear: 'Oreja',
   antenna: 'Antena', tail: 'Cola', hair: 'Pelo', accessory: 'Accesorio', text: 'Texto', background: 'Fondo', other: 'Otra',
 };
-export const STATE_LABEL: Record<StateName, string> = { idle: 'Reposo', talk: 'Hablando', think: 'Pensando', happy: 'Contento', wave: 'Saludando', attention: 'Atento', error: 'Error', sleep: 'Dormido' };
+export const STATE_LABEL: Record<StateName, string> = { idle: 'Reposo', talk: 'Hablando', think: 'Pensando', happy: 'Contento', wave: 'Saludando', attention: 'Atento', error: 'Error', sleep: 'Dormido', point: 'Señalando', celebrate: 'Celebrando' };
 const FINISH_LABEL: Record<(typeof FINISHES)[number], string> = { flat: 'Plano', matte: 'Mate', satin: 'Satinado', gloss: 'Brillante', metal: 'Metálico' };
 const TEXTURE_LABEL: Record<(typeof TEXTURES)[number], string> = { none: 'Ninguna', grain: 'Grano', fabric: 'Tela', paper: 'Papel', noise: 'Ruido' };
 const TONE_LABEL: Record<(typeof TONES)[number], string> = { cercano: 'Cercano', profesional: 'Profesional', divertido: 'Divertido', serio: 'Serio', entusiasta: 'Entusiasta' };

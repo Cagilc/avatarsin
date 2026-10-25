@@ -1,5 +1,5 @@
 import { liveTools, type ConnectorManifest } from '@vex/connectors';
-import { MAX_QUICK_ACTIONS, announcementSchema, applicable, engageIdSchema, type Announcement, type HostManifest, type Principal, type QuickAction } from '@vex/operator';
+import { MAX_QUICK_ACTIONS, announcementSchema, applicable, engageIdSchema, type Announcement, type HostManifest, type Principal, type QuickAction, type Tour } from '@vex/operator';
 import type { OperatorStore, StoredAnnouncement } from './storage.ts';
 
 /**
@@ -15,6 +15,7 @@ export interface EngageOptions {
 }
 
 export type VisibleAnnouncement = Announcement & { seen: boolean };
+export type VisibleTour = Tour & { done: boolean };
 
 const BODY_MAX = 2000;
 
@@ -35,6 +36,24 @@ export class Engage {
 
   get quickActionsOn(): boolean {
     return this.manifest?.features.quickActions === true;
+  }
+
+  get toursOn(): boolean {
+    return this.manifest?.features.tours === true;
+  }
+
+  /** The tours this person may take, with whether they completed each. */
+  toursFor(principal: Principal): VisibleTour[] {
+    if (!this.toursOn) return [];
+    const done = new Set(this.store.doneTours(principal.id));
+    return applicable(this.manifest?.tours ?? [], { role: principal.role, nowMs: this.now() }).map((t) => ({ ...t, done: done.has(t.id) }));
+  }
+
+  /** The person finished one of their tours. False when it is not theirs. */
+  markTourDone(principal: Principal, id: string): boolean {
+    if (!this.toursFor(principal).some((t) => t.id === id)) return false;
+    this.store.markTourDone(principal.id, id);
+    return true;
   }
 
   /** Manifest announcements plus the published ones from connector approvals, in that order. */

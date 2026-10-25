@@ -21,7 +21,7 @@ Estado: fase 1 hecha y probada en local. Sin remoto en GitHub hasta terminar de 
 | Física | Por pieza: muelle con rigidez, amortiguación, peso, caída por gravedad y giro máximo (0–1) |
 | Materiales | Por pieza: acabado (plano, mate, satinado, brillante, metálico), textura, sombra, contorno y tinte |
 | Mundo y estilo | Gravedad (fuerza y dirección), realismo, estirar y encoger |
-| Animaciones y estados | Clips con pistas de claves por pieza; 8 estados (reposo, hablando, pensando, contento, saludando, atento, error, dormido) |
+| Animaciones y estados | Clips con pistas de claves por pieza; 10 estados (reposo, hablando, pensando, contento, saludando, atento, error, dormido, señalando, celebrando). Al señalar, el runtime gira el brazo hacia la dirección que le da el host (`aim`) |
 | Personalidad | Nombre, tono, formalidad, extensión, emojis, saludo, contexto. Cambia cómo habla, nunca lo que hace |
 | Capacidades | Herramientas y riesgo máximo como operador. Solo el propietario las cambia |
 
@@ -81,7 +81,7 @@ Incrustar: «Publicar» → crear integración con el dominio del sitio → copi
 <vex-avatar endpoint="https://estudio.tudominio.com/v1/embed/vk_…" public-key="…" key-id="…" state="idle"></vex-avatar>
 ```
 
-El sitio cambia el atributo `state` para que hable, piense o salude; el elemento expone `avatar` (personalidad y capacidades verificadas) y emite `vex-ready` o `vex-error`.
+El sitio cambia el atributo `state` para que hable, piense o salude, y `aim` (grados en pantalla) para que señale hacia algo; el elemento expone `avatar` (personalidad y capacidades verificadas) y emite `vex-ready` o `vex-error`.
 
 ## Verificado (2026-10-25)
 

@@ -46,6 +46,9 @@ export interface OperatorStore {
   /** Ids of the announcements this person has dismissed. */
   seenAnnouncements(principalId: string): string[];
   markSeen(principalId: string, announcementId: string): void;
+  /** Ids of the tours this person completed. */
+  doneTours(principalId: string): string[];
+  markTourDone(principalId: string, tourId: string): void;
   close(): void;
 }
 
@@ -113,6 +116,18 @@ export class MemoryStore implements OperatorStore {
     this.seen.set(principalId, set);
   }
 
+  private readonly tours = new Map<string, Set<string>>();
+
+  doneTours(principalId: string): string[] {
+    return [...(this.tours.get(principalId) ?? [])];
+  }
+
+  markTourDone(principalId: string, tourId: string): void {
+    const set = this.tours.get(principalId) ?? new Set<string>();
+    set.add(tourId);
+    this.tours.set(principalId, set);
+  }
+
   close(): void {}
 }
 
@@ -135,6 +150,8 @@ export class SqliteStore implements OperatorStore {
   private readonly removeAnnouncement: StatementSync;
   private readonly selectSeen: StatementSync;
   private readonly insertSeen: StatementSync;
+  private readonly selectToursDone: StatementSync;
+  private readonly insertTourDone: StatementSync;
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -175,6 +192,12 @@ export class SqliteStore implements OperatorStore {
         seen_at text not null,
         primary key (principal_id, announcement_id)
       );
+      create table if not exists tour_done (
+        principal_id text not null,
+        tour_id text not null,
+        done_at text not null,
+        primary key (principal_id, tour_id)
+      );
     `);
     this.insertAudit = this.db.prepare('insert into audit (ts, session_id, principal_id, tool, outcome, entry) values (?, ?, ?, ?, ?, ?)');
     this.auditBySession = this.db.prepare('select entry from audit where principal_id = ? and session_id = ? order by id desc limit ?');
@@ -196,6 +219,8 @@ export class SqliteStore implements OperatorStore {
     this.removeAnnouncement = this.db.prepare('delete from announcements where id = ?');
     this.selectSeen = this.db.prepare('select announcement_id from announcement_seen where principal_id = ?');
     this.insertSeen = this.db.prepare('insert or ignore into announcement_seen (principal_id, announcement_id, seen_at) values (?, ?, ?)');
+    this.selectToursDone = this.db.prepare('select tour_id from tour_done where principal_id = ?');
+    this.insertTourDone = this.db.prepare('insert or ignore into tour_done (principal_id, tour_id, done_at) values (?, ?, ?)');
   }
 
   recordAudit(entry: AuditEntry): void {
@@ -248,6 +273,14 @@ export class SqliteStore implements OperatorStore {
 
   markSeen(principalId: string, announcementId: string): void {
     this.insertSeen.run(principalId, announcementId, new Date().toISOString());
+  }
+
+  doneTours(principalId: string): string[] {
+    return (this.selectToursDone.all(principalId) as Array<{ tour_id: string }>).map((r) => r.tour_id);
+  }
+
+  markTourDone(principalId: string, tourId: string): void {
+    this.insertTourDone.run(principalId, tourId, new Date().toISOString());
   }
 
   close(): void {

@@ -17,7 +17,7 @@ Un avatar animado (Vex) que ejecuta acciones en cualquier plataforma de negocio 
 
 ## Estudio de avatares (`packages/format`, `packages/runtime`, `apps/server`, `apps/studio`)
 Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
-1. El documento del avatar solo contiene datos (objetos Zod estrictos). Nada de scripts, expresiones ni URL.
+1. El documento del avatar solo contiene datos (objetos Zod estrictos). Nada de scripts, expresiones ni URL. Un estado nuevo = `STATES` + animación de partida en `presets.ts` + etiqueta en el editor + clip en la muestra de Vex.
 2. Todo cambio es una operación de `packages/format/src/ops.ts`, venga del editor o del asistente. Operación nueva = esquema + `pathsOf` + `mutate` + test.
 3. El asistente nunca toca lo que fijó una persona (`provenance.by === 'user'`) ni ejecuta `setCapabilities` o `release`. Sus propuestas no se guardan hasta que una persona acepta.
 4. Toda subida pasa por `apps/server/src/sanitize.ts`; la política SVG (`packages/format/src/svgPolicy.ts`) la aplican el servidor y el runtime.
@@ -48,8 +48,8 @@ Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
 - Para probar conectores sin clave: orden directa `usa <herramienta> {json}` del modo guion.
 
 ## Siguiente
-El orden está en `docs/plan-maestro.md`. Hechos el paso 1 (manifiesto, propuestas, regla de permisos y lectura del *grant*), el paso 2 (`<vex-assistant>`, registro de elementos, personalidad publicada en el prompt, Vex en el formato del estudio) y el paso 3 (anuncios y botones rápidos: un botón con herramienta corre por el mismo bucle que el modelo, con `DirectProvider`).
-- Paso 4: medir con Claude (necesita la clave en `apps/api/.env`); después tours (5) y driver DOM (6).
+El orden está en `docs/plan-maestro.md`. Hechos el paso 1 (manifiesto, propuestas, regla de permisos y lectura del *grant*), el paso 2 (`<vex-assistant>`, registro de elementos, personalidad publicada en el prompt, Vex en el formato del estudio), el paso 3 (anuncios y botones rápidos: un botón con herramienta corre por el mismo bucle que el modelo, con `DirectProvider`) y el paso 5 (tours: estados `point` y `celebrate` del formato, `aim` en el runtime, motor determinista en `packages/assistant/src/tour.ts`).
+- Paso 4: medir con Claude (necesita la clave en `apps/api/.env`); después el driver DOM (6), solo con cifras de inyección.
 - Ejecutar el banco con Claude (`pnpm eval -- --provider anthropic`) y fijar el acierto mínimo con datos.
 - Conectar el backend real: implementar `PlatformClient` y `TokenService.verify` contra el JWT de la plataforma.
 - Conectores: búsqueda de herramientas bajo demanda cuando haya muchas; OpenAPI en YAML; OAuth por usuario.

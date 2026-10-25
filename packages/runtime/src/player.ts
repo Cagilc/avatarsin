@@ -1,4 +1,5 @@
 import { effectiveMaterial, type AvatarDocument, type Clip, type Part, type StateName } from '@vexstudio/format';
+import { aimSample } from './aim.ts';
 import { toSvg } from './math.ts';
 import { materialFilter } from './materials.ts';
 import { Rig, type PartPose, type Pose } from './rig.ts';
@@ -33,6 +34,7 @@ export class AvatarPlayer {
   private readonly uid = `vx${(instances++).toString(36)}`;
   private nodes = new Map<string, SVGGElement>();
   private stateName: StateName = 'idle';
+  private aimDeg: number | null = null;
   private current: { clip: Clip | undefined; start: number } = { clip: undefined, start: 0 };
   private previous: { clip: Clip | undefined; start: number; until: number } | null = null;
   private clock = 0;
@@ -82,6 +84,16 @@ export class AvatarPlayer {
     if (state === this.stateName) return;
     this.stateName = state;
     this.selectClip(false);
+  }
+
+  /** Screen direction to point the arm at (degrees, 0 = right, 90 = down), or null to let the clip rule. */
+  setAim(deg: number | null): void {
+    this.aimDeg = deg;
+    if (!this.playing) this.draw(this.rig.frame(this.sample(), 0, false));
+  }
+
+  get aim(): number | null {
+    return this.aimDeg;
   }
 
   /** Editor mode: draw the rest pose (no animation, no physics). */
@@ -160,14 +172,15 @@ export class AvatarPlayer {
   }
 
   private sample(): Sample {
-    if (this.rest || this.opts.reducedMotion) return new Map();
+    const aimed = (s: Sample) => (this.aimDeg === null || this.rest ? s : aimSample(this.doc, s, this.aimDeg));
+    if (this.rest || this.opts.reducedMotion) return aimed(new Map());
     const now = this.current.clip ? sampleClip(this.current.clip, this.clock - this.current.start) : new Map();
     if (this.previous && this.clock < this.previous.until) {
       const before = this.previous.clip ? sampleClip(this.previous.clip, this.clock - this.previous.start) : new Map();
-      return blend(before, now, 1 - (this.previous.until - this.clock) / FADE_S);
+      return aimed(blend(before, now, 1 - (this.previous.until - this.clock) / FADE_S));
     }
     this.previous = null;
-    return now;
+    return aimed(now);
   }
 
   /** Normalized time of the current clip (for the editor's timeline). */

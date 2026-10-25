@@ -71,7 +71,7 @@ describe('loading the host manifest', () => {
     expect(() => loadHostManifest('no-existe')).toThrow(/No existe el manifiesto del host: .*no-existe.*manifest\.json \(preset "no-existe"\)/);
     expect(() => parseHostManifest('{ nope', 'm.json')).toThrow(/m\.json: no es JSON válido/);
     expect(() => parseHostManifest(JSON.stringify({ format: 'vex-host', version: 1, host: { name: '', domain: 'x' } }), 'm.json')).toThrow(/m\.json: manifiesto del host no válido\. host\.name:/);
-    expect(() => parseHostManifest(JSON.stringify({ format: 'vex-host', version: 1, host: { name: 'X', domain: 'x' }, tours: [{}] }), 'm.json')).toThrow(/tours: .*paso posterior/);
+    expect(() => parseHostManifest(JSON.stringify({ format: 'vex-host', version: 1, host: { name: 'X', domain: 'x' }, tours: [{}] }), 'm.json')).toThrow(/tours\.0\.(id|title|steps)/);
     const dir = mkdtempSync(join(tmpdir(), 'vex-host-'));
     try {
       writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ format: 'vex-host', version: 1, host: { name: 'Mío', domain: 'mio.example' }, extra: true }));

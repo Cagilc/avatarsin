@@ -96,7 +96,8 @@ test.beforeAll(async () => {
     host: { name: 'Demo Negocio', domain: 'localhost' },
     avatar: { endpoint: `${STUDIO}/v1/embed/${key.id}`, publicKey: signing.publicKey, keyId: signing.keyId },
     screenContext: { pantalla: { description: 'Vista abierta.' }, contactoId: { description: 'Id del contacto abierto.' }, contactoEmail: { description: 'Correo del contacto abierto.' }, expedienteId: { description: 'Expediente abierto.' } },
-    features: { announcements: true, quickActions: true },
+    features: { announcements: true, quickActions: true, tours: true },
+    tours: [{ id: 'paseo', title: 'Un paseo', steps: [{ target: 'titulo', say: 'Este es el título de la página.' }, { target: 'no-existe', say: 'Esto no está.' }, { say: 'Y eso es todo.', pose: 'celebrate' }] }],
     quickActions: [
       { id: 'buscar-laura', label: 'Buscar a Laura', icon: '🔎', tool: 'buscar', params: { consulta: 'Laura Pérez', tipo: 'contactos' } },
       { id: 'quien-es-marco', label: '¿Quién es Marco?', prompt: '¿Quién es Marco Rossi?' },
@@ -170,7 +171,7 @@ test('una página HTML sin framework: dos líneas, el avatar del estudio y una p
   expect(snapshot).toEqual([{ id: 'titulo', role: 'heading', label: 'Página simple' }]);
 
   // The announcement from the manifest, dismissed once; the quick action from the manifest, through the loop.
-  const news = assistant.locator('.news-item');
+  const news = assistant.locator('.news-item:not(.tour-card)');
   await expect(news).toHaveCount(1);
   await expect(news).toContainText('Pixel ya opera aquí');
   await news.getByRole('button', { name: 'Entendido' }).click();
@@ -183,4 +184,51 @@ test('una página HTML sin framework: dos líneas, el avatar del estudio y una p
   await assistant.getByRole('button', { name: '¿Quién es Marco?' }).click();
   await expect(page.locator('.msg.vex').last()).toContainText('Marco Rossi');
   await expect(page.locator('.turn').last().locator('.step-state').first()).toHaveText('hecho');
+});
+
+test('el tour: la mascota sale del panel, señala el título, salta lo que no está y vuelve celebrando', async ({ page }) => {
+  await page.goto(`${SITE}/asistente?api=${encodeURIComponent(CORE)}`);
+  await expect(page.locator('#status')).toHaveText('listo:Pixel avatar:Pixel');
+  const assistant = page.locator('vex-assistant');
+  await page.evaluate(() => {
+    const w = window as Window & { __tour?: string[] };
+    w.__tour = [];
+    document.getElementById('vex')!.addEventListener('vex-tour', (e) => {
+      const d = (e as CustomEvent<{ event: string; index?: number }>).detail;
+      w.__tour!.push(`${d.event}${d.index ?? ''}`);
+    });
+  });
+  const card = assistant.locator('.tour-card');
+  await expect(card).toContainText('Tour: Un paseo');
+  await card.getByRole('button', { name: 'Empezar' }).click();
+
+  const bubble = assistant.locator('.tour-bubble');
+  await expect(bubble).toContainText('Este es el título de la página.');
+  await expect(bubble).toContainText('1 de 3');
+  const mascot = assistant.locator('.tour-mascot vex-avatar');
+  await expect(mascot).toHaveAttribute('state', 'point');
+  await expect(mascot).toHaveAttribute('aim', /^-?\d+$/);
+  await expect(assistant.locator('.tour-highlight')).toBeVisible();
+  await test.info().attach('tour-paso-1', { body: await page.screenshot(), contentType: 'image/png' });
+
+  // The second step's target is not on the page: straight to the last one, spoken from the panel.
+  await bubble.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(bubble).toContainText('Y eso es todo.');
+  await expect(assistant.locator('.avatar vex-avatar')).toHaveAttribute('state', 'celebrate');
+  await bubble.getByRole('button', { name: 'Terminar' }).click();
+  await expect(bubble).toHaveCount(0);
+  await expect(card).toHaveCount(0);
+  expect(await page.evaluate(() => (window as Window & { __tour?: string[] }).__tour)).toEqual(['start', 'step0', 'step2', 'done']);
+
+  // Completed for this person: a reload no longer offers it. With reduced motion, nothing travels and Escape leaves.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('listo:Pixel avatar:Pixel');
+  await expect(assistant.locator('.tour-card')).toHaveCount(0);
+  await assistant.evaluate((el) => (el as HTMLElement & { startTour(id: string): Promise<void> }).startTour('paseo'));
+  await expect(assistant.locator('.tour-stage')).toHaveClass(/reduced/);
+  await expect(assistant.locator('.tour-bubble')).toContainText('Este es el título');
+  await page.keyboard.press('Escape');
+  await expect(assistant.locator('.tour-bubble')).toHaveCount(0);
+  await expect(assistant.locator('.avatar vex-avatar')).toHaveCount(1);
 });

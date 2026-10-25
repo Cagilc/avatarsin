@@ -35,7 +35,11 @@ function manifestWith(citasUrl: string, over: Partial<HostManifestInput> = {}): 
       format: 'vex-host',
       version: 1,
       host: { name: 'Demo', domain: 'demo.example' },
-      features: { announcements: true, quickActions: true },
+      features: { announcements: true, quickActions: true, tours: true },
+      tours: [
+        { id: 'paseo', title: 'Un paseo por la plataforma', steps: [{ target: 'titulo', say: 'Aquí está el título.' }, { say: 'Y eso es todo.', pose: 'celebrate' }] },
+        { id: 'admin', title: 'Para administradores', roles: ['admin'], when: 'first', steps: [{ target: 'conectores', say: 'Aquí revisas conectores.' }] },
+      ],
       policy: { allow: ['platform:*', 'api:*', 'mcp:*'], deny: ['enviar_correo'], confirm: ['irreversible'] },
       connectors: [{ id: 'citas', name: 'Agenda', source: { kind: 'openapi', url: `${citasUrl}/openapi.json` }, baseUrl: citasUrl }],
       quickActions: [
@@ -97,6 +101,21 @@ describe('announcements and quick actions in Vex Core', () => {
     expect((await get('/engage/quick-actions', ana)).json()).toEqual([]);
     expect((await post('/engage/quick-actions/buscar-laura/run', ana)).statusCode).toBe(404);
     expect((await post('/engage/announcements/bienvenida/seen', ana)).statusCode).toBe(404);
+    expect((await get('/engage/tours', ana)).json()).toEqual([]);
+    expect((await post('/engage/tours/paseo/done', ana)).statusCode).toBe(404);
+  });
+
+  it('offers each person the tours of their role and remembers which they completed', async () => {
+    await start({ manifest: manifestWith(citasBase) });
+    const ana = await login('u-ana');
+    const mine = (await get('/engage/tours', ana)).json() as Array<{ id: string; done: boolean; when: string; steps: unknown[] }>;
+    expect(mine.map((t) => `${t.id}:${t.done}:${t.when}`)).toEqual(['paseo:false:manual']);
+    expect(mine[0]!.steps).toHaveLength(2);
+    expect((await post('/engage/tours/paseo/done', ana)).statusCode).toBe(200);
+    expect(((await get('/engage/tours', ana)).json() as Array<{ done: boolean }>).map((t) => t.done)).toEqual([true]);
+    expect((await post('/engage/tours/admin/done', ana)).statusCode).toBe(404);
+    const cesar = await login('u-cesar');
+    expect(((await get('/engage/tours', cesar)).json() as Array<{ id: string; done: boolean }>).map((t) => `${t.id}:${t.done}`)).toEqual(['paseo:false', 'admin:false']);
   });
 
   it('shows each person the announcements of their role and the moment, once', async () => {

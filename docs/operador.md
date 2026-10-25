@@ -63,7 +63,7 @@ Lo que una plataforma declara sobre sí misma para que Vex la opere, en un JSON 
 | `avatar` | El avatar publicado por el estudio para esta integración: `endpoint`, `publicKey` y `keyId`. Con él, Vex Core pide el *grant* firmado y lo aplica (abajo). |
 | `features` | Interruptores de los pasos siguientes (tours, anuncios, botones rápidos, driver DOM). Todos apagados; con todo apagado, las herramientas y la política son idénticas a las de un servidor sin manifiesto (hay un test que lo compara). |
 | `announcements`, `quickActions` | Novedades y accesos rápidos (paso 3, sección propia más abajo). |
-| `tours` | Reservado: un manifiesto puede nombrarlo, pero hoy debe estar vacío. |
+| `tours` | Recorridos guiados por la página con la mascota (paso 5, sección propia más abajo). |
 
 Un manifiesto que no valida para el arranque con el fichero, el campo y el motivo (`VEX_HOST_MANIFEST: …/manifest.json: manifiesto del host no válido. host.name: …`).
 
@@ -107,6 +107,18 @@ Lo que un host enseña a sus usuarios **sin modelo**: novedades y accesos rápid
 **El modelo también las conoce.** Las novedades para todos (sin `roles`) entran en el system prompt como avisos del administrador, nunca como órdenes, para que Vex responda a «¿qué hay de nuevo?».
 
 **En el panel.** `<vex-assistant>` pide anuncios y botones al conectar: los no vistos salen en una bandeja al principio de la conversación (texto plano, construido como nodos de texto: nunca HTML), con su acción (`cta`: un botón rápido o un enlace https) y «Entendido»; los botones van en una fila sobre el cuadro de texto. Un botón de prompt es `send(prompt)`; uno de herramienta, `runQuickAction(id)`. `presets/demo-negocio` trae tres botones y un anuncio de bienvenida. Pruebas: `apps/api/src/engage.test.ts` (por HTTP: rol, visto una vez, botón por el bucle con confirmación real, botón denegado, borradores) y el e2e de la página simple.
+
+## Tours con la mascota (paso 5 del plan maestro)
+
+Un recorrido guiado por la página, **sin modelo**: la mascota sale del panel, se coloca junto a un elemento registrado, lo señala y explica; la persona avanza, o el paso avanza solo cuando pulsa o escribe en el elemento. Se declara en el manifiesto (`tours`, esquema en `packages/operator/src/schema/tour.ts`) y solo se sirve con `features.tours`.
+
+- **Contrato**: `id`, `title`, `roles?`, `when` (`manual`: se ofrece en la bandeja; `first`: arranca solo la primera vez, hasta completarlo) y `steps[]` con `target` (id de elemento del registro, opcional: sin él habla desde el panel), `say` (texto plano), `pose` (`point` por defecto; también `talk`, `happy`, `wave`, `attention`, `celebrate`) y `advanceOn` (`next`, `click`, `input`).
+- **Rutas**: `GET /engage/tours` (los de su rol, con `done`) y `POST /engage/tours/:id/done`. Lo completado se guarda por persona en el almacén.
+- **Motor** (`packages/assistant/src/tour.ts`): máquina determinista sin DOM; un paso cuyo `target` no está en la página se salta y se anota (`skipped`), así el tour nunca se queda atascado. Saltar no cuenta como completar.
+- **Puesta en escena** (`element.ts`): halo alrededor del elemento que **no captura clics**, burbuja con el texto (`role="dialog"`, `aria-live`), contador, «Siguiente/Terminar» y «Saltar»; `Escape` sale; el elemento se desplaza a la vista. La mascota viaja (transición CSS; con `prefers-reduced-motion` aparece sin viajar) y adopta la pose del paso; al terminar vuelve al panel y celebra.
+- **«Señalar hacia» lo calcula el runtime**: el panel pasa al `<vex-avatar>` el atributo `aim` (grados en pantalla: 0 derecha, 90 abajo) y el runtime gira el brazo del lado correspondiente hasta esa dirección, encima de lo que haga el clip (`packages/runtime/src/aim.ts`). Ningún clip sabe dónde está el objetivo.
+- **Estados nuevos del formato**: `point` y `celebrate` (ya son 10). El estudio les da animación de partida y el editor los lista; Vex los trae con su brazo derecho extendido y el salto de celebración.
+- Fuera de este paso, anotado en el plan: logros y puntos, borradores de tour con IA (tras medir con Claude), y «pantalla cambia a mitad de tour» (hoy, el paso cuyo elemento desaparece se salta al llegar a él).
 
 **Vex en el formato del estudio.** El avatar dibujado a mano (`assets/vex-2d`) entra ahora en el estudio con «Probar con Vex, el operador»: `apps/studio/scripts/vex-sample.ts` aplana el rig anidado en 37 grupos (`public/samples/vex.svg`) y `packages/format/src/samples/vex.ts` les pone el esqueleto, los pivotes, las poses como clips de los 8 estados y las **caras y visemas**: cada variante de ojos y de boca es una pieza, y los clips las encienden con pistas de opacidad a saltos; `talk` turna los nueve visemas. No hizo falta cambiar el formato. `packages/vex` (React) sigue solo para el laboratorio `#estados`.
 

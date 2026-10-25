@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { riskSchema, type Driver, type Risk } from './action.ts';
 import { announcementSchema, quickActionSchema } from './engage.ts';
 import { decide, type PermissionPolicy, permissionPolicySchema } from './policy.ts';
+import { tourSchema } from './tour.ts';
 
 /**
  * The host manifest: what a platform that embeds Vex declares about itself. It lives on the
@@ -75,9 +76,6 @@ export const hostAvatarSchema = z.strictObject({
 });
 export type HostAvatar = z.infer<typeof hostAvatarSchema>;
 
-/** Reserved for later workflows: a manifest may name them but not fill them yet. */
-const reserved = (what: string) => z.array(z.unknown()).max(0, `${what}: llega en un paso posterior; deja la lista vacía.`).optional();
-
 const uniqueIds = (list: Array<{ id: string }>) => new Set(list.map((c) => c.id)).size === list.length;
 
 export const hostManifestSchema = z
@@ -96,7 +94,8 @@ export const hostManifestSchema = z
     policy: permissionPolicySchema.optional(),
     screenContext: screenContextSchema.default({}),
     features: hostFeaturesSchema.prefault({}),
-    tours: reserved('tours'),
+    /** Shown only with `features.tours`; the avatar points at registered elements, no model involved. */
+    tours: z.array(tourSchema).max(20).default([]).refine(uniqueIds, 'ids de tour repetidos'),
     /** Shown only with `features.announcements`; presentation data, served to the page by Vex Core. */
     announcements: z.array(announcementSchema).max(50).default([]).refine(uniqueIds, 'ids de anuncio repetidos'),
     /** Shown only with `features.quickActions`; a tool button runs through policy and confirmation. */

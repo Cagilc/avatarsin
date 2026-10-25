@@ -123,8 +123,11 @@ export type Key = z.infer<typeof keySchema>;
 export type Track = z.infer<typeof trackSchema>;
 export type Clip = z.infer<typeof clipSchema>;
 
-/** The states the host drives (same vocabulary as the Vex operator's director). */
-export const STATES = ['idle', 'talk', 'think', 'happy', 'wave', 'attention', 'error', 'sleep'] as const;
+/**
+ * The states the host drives (same vocabulary as the Vex operator's director). `point` and
+ * `celebrate` serve the tours: the runtime aims the pointing arm at a direction the host gives.
+ */
+export const STATES = ['idle', 'talk', 'think', 'happy', 'wave', 'attention', 'error', 'sleep', 'point', 'celebrate'] as const;
 export type StateName = (typeof STATES)[number];
 export const statesSchema = z.strictObject(Object.fromEntries(STATES.map((s) => [s, idSchema.optional()])) as Record<StateName, z.ZodOptional<typeof idSchema>>);
 

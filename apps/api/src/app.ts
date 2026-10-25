@@ -349,6 +349,19 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return { ok: true };
   });
 
+  app.get('/engage/tours', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    return engage.toursFor(principal);
+  });
+
+  app.post('/engage/tours/:id/done', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    if (!engage.markTourDone(principal, (req.params as { id: string }).id)) return reply.code(404).send({ error: 'No hay ningún tour con ese id para ti.' });
+    return { ok: true };
+  });
+
   app.get('/engage/quick-actions', async (req, reply) => {
     const principal = principalOf(req, reply);
     if (!principal) return undefined;

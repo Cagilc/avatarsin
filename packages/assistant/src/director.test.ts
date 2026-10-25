@@ -85,6 +85,16 @@ describe('the director', () => {
     expect(states.at(-1)).toBe('talk');
   });
 
+  it('celebrates for a moment and then goes back to the phase', () => {
+    const { c, d, states } = setup(false);
+    d.setPhase('thinking');
+    d.celebrate();
+    expect(d.state).toBe('celebrate');
+    c.advance(TIMING.celebrateMs);
+    expect(d.state).toBe('think');
+    expect(states).toEqual(['idle', 'think', 'celebrate', 'think']);
+  });
+
   it('reports each state once', () => {
     const { d, states } = setup(false);
     d.setPhase('thinking');

@@ -18,7 +18,7 @@ export interface DirectorOptions {
   clearTimeout?: (id: unknown) => void;
 }
 
-export const TIMING = { greetingMs: 1800, successMs: 1200 } as const;
+export const TIMING = { greetingMs: 1800, successMs: 1200, celebrateMs: 1200 } as const;
 
 const PHASE_STATE: Record<Phase, StateName> = {
   idle: 'idle',
@@ -48,6 +48,7 @@ export class Director {
   private greeting: boolean;
   private talking = false;
   private success = false;
+  private celebrating = false;
   private timers: unknown[] = [];
   private last: StateName | null = null;
 
@@ -74,7 +75,15 @@ export class Director {
     this.emit();
   }
 
+  /** A short celebration (a tour completed), on top of whatever the phase says. */
+  celebrate(): void {
+    this.celebrating = true;
+    this.after(TIMING.celebrateMs, () => (this.celebrating = false));
+    this.emit();
+  }
+
   get state(): StateName {
+    if (this.celebrating) return 'celebrate';
     if (this.success) return 'happy';
     if (this.greeting) return 'wave';
     if (this.phase === 'idle' && this.talking) return 'talk';

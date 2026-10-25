@@ -102,6 +102,29 @@ export function presetClip(state: StateName, doc: AvatarDocument, targets: Targe
           track(root, 'scaleY', [[0, 0.98], [0.5, 1.0], [1, 0.98]]),
         ],
       };
+    case 'point': {
+      // The arm goes up and holds; the runtime turns it towards what the host points at (`aim`).
+      const who = targets.arm ?? head;
+      const lift = targets.arm ? -80 : -8;
+      return {
+        id, name: 'Señalando', duration: 1.6, loop: true,
+        tracks: [
+          track(who, 'rotate', [[0, lift * amp], [0.5, (lift - 4) * amp], [1, lift * amp]]),
+          track(head, 'rotate', [[0, -3 * amp], [0.5, -4 * amp], [1, -3 * amp]]),
+        ],
+      };
+    }
+    case 'celebrate': {
+      const jump = -0.08 * h * amp;
+      return {
+        id, name: 'Celebrando', duration: 1, loop: false,
+        tracks: [
+          track(root, 'y', [[0, 0, 'out'], [0.3, jump, 'in'], [0.6, 0, 'out'], [0.8, jump * 0.4, 'in'], [1, 0]]),
+          track(root, 'scaleY', [[0, 1 - 0.12 * squash], [0.15, 1 + 0.1 * squash], [0.6, 1 - 0.08 * squash], [0.75, 1 + 0.05 * squash], [1, 1]]),
+          track(head, 'rotate', [[0, 0], [0.25, 10 * amp], [0.5, -10 * amp], [0.75, 6 * amp], [1, 0]]),
+        ],
+      };
+    }
   }
 }
 

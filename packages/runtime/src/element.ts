@@ -10,7 +10,7 @@ import { AvatarPlayer, type LoadedAsset } from './player.ts';
  * error, sleep), the same vocabulary as the Vex operator's director.
  */
 export class VexAvatarElement extends HTMLElement {
-  static observedAttributes = ['state', 'endpoint', 'public-key', 'key-id'];
+  static observedAttributes = ['state', 'aim', 'endpoint', 'public-key', 'key-id'];
 
   private player: AvatarPlayer | null = null;
   private doc: AvatarDocument | null = null;
@@ -47,6 +47,10 @@ export class VexAvatarElement extends HTMLElement {
     if (name === 'state') {
       const s = after as StateName;
       if (this.player && (STATES as readonly string[]).includes(s)) this.player.setState(s);
+    } else if (name === 'aim') {
+      // `aim="-30"`: point the arm that way (degrees, 0 = right, 90 = down); no attribute = the clip rules.
+      const deg = after === null ? null : Number(after);
+      this.player?.setAim(deg !== null && Number.isFinite(deg) ? deg : null);
     } else if (this.isConnected) void this.load();
   }
 
@@ -101,6 +105,8 @@ export class VexAvatarElement extends HTMLElement {
       this.player = new AvatarPlayer(this.box, verified.doc, assets, { reducedMotion });
       const s = this.getAttribute('state') as StateName | null;
       if (s && (STATES as readonly string[]).includes(s)) this.player.setState(s);
+      const aim = Number(this.getAttribute('aim'));
+      if (this.hasAttribute('aim') && Number.isFinite(aim)) this.player.setAim(aim);
       this.dispatchEvent(new CustomEvent('vex-ready', { detail: { name: verified.doc.personality.displayName, revision: verified.pkg.revision } }));
     } catch (err) {
       if (!ctrl.signal.aborted) this.fail(err instanceof Error ? err.message : String(err));

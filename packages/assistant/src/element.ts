@@ -1,9 +1,25 @@
-import type { ActionOutcome, ActionRequest, Phase, Principal, QuickAction } from '@vex/operator';
+import type { ActionOutcome, ActionRequest, Phase, Principal, QuickAction, TourStep } from '@vex/operator';
 import type { StateName } from '@vexstudio/format';
-import { OperatorClient, type OperatorInfo, type StreamEvent, type VisibleAnnouncement } from './client.ts';
+import { OperatorClient, type OperatorInfo, type StreamEvent, type VisibleAnnouncement, type VisibleTour } from './client.ts';
 import { Director, PHASE_LABEL } from './director.ts';
 import { ElementRegistry } from './registry.ts';
 import { STYLES } from './styles.ts';
+import { TourRun, type TourEvent } from './tour.ts';
+
+/** What the panel keeps while a tour is on: its engine, the stage it draws on, and how to undo it. */
+interface ActiveTour {
+  run: TourRun;
+  stage: HTMLDivElement;
+  highlight: HTMLDivElement;
+  bubble: HTMLDivElement;
+  mascot: HTMLDivElement;
+  target: Element | null;
+  /** Listeners on the current target (click / input) and on the window. */
+  undo: Array<() => void>;
+  reduced: boolean;
+}
+
+const MASCOT_PX = 96;
 
 /**
  * <vex-assistant api="https://vex.example">
@@ -80,6 +96,12 @@ export class VexAssistantElement extends HTMLElement {
   private who: Principal | null = null;
   private news: VisibleAnnouncement[] = [];
   private actions: QuickAction[] = [];
+  private tourList: VisibleTour[] = [];
+  private tour: ActiveTour | null = null;
+  /** Tours the person said "not now" to, for this page only. */
+  private readonly laterTours = new Set<string>();
+  /** The director's state while a tour holds the avatar, applied when the tour ends. */
+  private heldState: StateName | null = null;
 
   private readonly shadow: ShadowRoot;
   private readonly els: {
@@ -178,6 +200,16 @@ export class VexAssistantElement extends HTMLElement {
     return this.actions;
   }
 
+  /** The tours the server gave this person, with whether they completed each. */
+  get tours(): VisibleTour[] {
+    return this.tourList;
+  }
+
+  /** The tour in progress, if any: its id and the index of the current step. */
+  get activeTour(): { id: string; index: number } | null {
+    return this.tour ? { id: this.tour.run.tour.id, index: this.tour.run.index } : null;
+  }
+
   get phase(): Phase {
     return this.phaseName;
   }
@@ -200,6 +232,7 @@ export class VexAssistantElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this.tour?.run.skip();
     this.director?.dispose();
     this.director = null;
     window.clearTimeout(this.settle);
@@ -270,7 +303,10 @@ export class VexAssistantElement extends HTMLElement {
       if (seq !== this.loadSeq) return;
       this.renderActions();
       this.renderLog();
-      this.emit('vex-engage', { announcements: this.news, quickActions: this.actions });
+      this.emit('vex-engage', { announcements: this.news, quickActions: this.actions, tours: this.tourList });
+      // A first-visit tour starts by itself, once, until the person completes it.
+      const first = this.tourList.find((t) => t.when === 'first' && !t.done);
+      if (first && !this.tour) void this.startTour(first.id);
     } catch (err) {
       if (seq !== this.loadSeq) return;
       const message = `No llego a Vex Core (${err instanceof Error ? err.message : String(err)}).`;
@@ -285,7 +321,11 @@ export class VexAssistantElement extends HTMLElement {
     if (!client) return;
     const features = info.host.features;
     try {
-      [this.news, this.actions] = await Promise.all([features?.announcements ? client.announcements() : Promise.resolve([]), features?.quickActions ? client.quickActions() : Promise.resolve([])]);
+      [this.news, this.actions, this.tourList] = await Promise.all([
+        features?.announcements ? client.announcements() : Promise.resolve([]),
+        features?.quickActions ? client.quickActions() : Promise.resolve([]),
+        features?.tours ? client.tours() : Promise.resolve([]),
+      ]);
     } catch (err) {
       this.emit('vex-error', { message: `Novedades: ${err instanceof Error ? err.message : String(err)}` });
     }
@@ -330,8 +370,151 @@ export class VexAssistantElement extends HTMLElement {
   }
 
   private setAvatarState(state: StateName): void {
+    // While a tour holds the avatar, the steps decide its pose; the phase is applied afterwards.
+    if (this.tour) {
+      this.heldState = state;
+      return;
+    }
     this.avatarEl?.setAttribute('state', state);
     this.emit('vex-state', { state });
+  }
+
+  // ── Tours ──────────────────────────────────────────────────────────────────
+
+  /** Starts one of this person's tours (a completed one can be taken again). */
+  async startTour(id: string): Promise<void> {
+    const tour = this.tourList.find((t) => t.id === id);
+    if (!tour) return;
+    if (this.tour) this.tour.run.skip();
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const stage = h('div', { class: `tour-stage${reduced ? ' reduced' : ''}`, 'data-tour': tour.id });
+    const highlight = h('div', { class: 'tour-highlight', hidden: '' });
+    const bubble = h('div', { class: 'tour-bubble', role: 'dialog', 'aria-live': 'polite', 'aria-label': tour.title });
+    const mascot = h('div', { class: 'tour-mascot', hidden: '' });
+    stage.append(highlight, mascot, bubble);
+    this.shadow.appendChild(stage);
+    const active: ActiveTour = { run: new TourRun(tour, { exists: (t) => this.registry.get(t) !== undefined, onEvent: (e) => this.onTourEvent(e) }), stage, highlight, bubble, mascot, target: null, undo: [], reduced };
+    this.tour = active;
+    const reposition = () => this.placeTour();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') active.run.skip();
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('keydown', onKey);
+    active.undo.push(() => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('keydown', onKey);
+    });
+    this.emit('vex-tour', { id: tour.id, event: 'start' });
+    active.run.start();
+  }
+
+  private onTourEvent(event: TourEvent): void {
+    const active = this.tour;
+    if (!active) return;
+    if (event.type === 'step') {
+      this.showTourStep(active, event.step, event.index, event.of);
+      this.emit('vex-tour', { id: active.run.tour.id, event: 'step', index: event.index, target: event.step.target ?? null });
+      return;
+    }
+    void this.finishTour(active, event.completed, event.skipped);
+  }
+
+  private showTourStep(active: ActiveTour, step: TourStep, index: number, of: number): void {
+    // Listeners of the previous target go; the window ones (first entry) stay.
+    for (const undo of active.undo.splice(1)) undo();
+    const target = step.target !== undefined ? (this.registry.get(step.target) ?? null) : null;
+    active.target = target;
+    if (target) {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: active.reduced ? 'auto' : 'smooth' });
+      if (step.advanceOn === 'click' || step.advanceOn === 'input') {
+        const type = step.advanceOn;
+        const go = () => active.run.next();
+        target.addEventListener(type, go, { once: true });
+        active.undo.push(() => target.removeEventListener(type, go));
+      }
+    }
+    // The avatar travels to the target; without one it speaks from its place in the panel.
+    if (this.avatarEl) {
+      if (target) {
+        if (this.avatarEl.parentElement !== active.mascot) active.mascot.appendChild(this.avatarEl);
+        active.mascot.hidden = false;
+      } else {
+        if (this.avatarEl.parentElement !== this.els.avatar) this.els.avatar.appendChild(this.avatarEl);
+        active.mascot.hidden = true;
+        this.avatarEl.removeAttribute('aim');
+      }
+      this.avatarEl.setAttribute('state', step.pose);
+    }
+    const last = index === of - 1;
+    const next = h('button', { type: 'button', class: 'btn primary' }, last ? 'Terminar' : 'Siguiente');
+    next.addEventListener('click', () => active.run.next());
+    const skip = h('button', { type: 'button', class: 'btn' }, 'Saltar');
+    skip.addEventListener('click', () => active.run.skip());
+    const buttons = step.advanceOn === 'next' ? [next, skip] : [skip];
+    const hint = step.advanceOn === 'click' ? 'Pulsa el elemento señalado para seguir.' : step.advanceOn === 'input' ? 'Escribe en el elemento señalado para seguir.' : null;
+    active.bubble.replaceChildren(
+      h('span', { class: 'tour-count' }, `${active.run.tour.title} · ${index + 1} de ${of}`),
+      h('p', {}, step.say),
+      ...(hint ? [h('p', { class: 'muted' }, hint)] : []),
+      h('div', { class: 'tour-actions' }, ...buttons),
+    );
+    active.highlight.hidden = !target;
+    this.placeTour();
+    (step.advanceOn === 'next' ? next : skip).focus({ preventScroll: true });
+  }
+
+  /** Puts highlight, mascot and bubble around the current target (or by the panel's avatar). */
+  private placeTour(): void {
+    const active = this.tour;
+    if (!active) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 6;
+    const anchor = active.target ? active.target.getBoundingClientRect() : this.els.avatar.getBoundingClientRect();
+    if (active.target) {
+      Object.assign(active.highlight.style, { left: `${anchor.left - pad}px`, top: `${anchor.top - pad}px`, width: `${anchor.width + 2 * pad}px`, height: `${anchor.height + 2 * pad}px` });
+      // The mascot stands at the side with room, at the target's height, and points across.
+      const left = anchor.left - MASCOT_PX - 14 >= 0 ? anchor.left - MASCOT_PX - 14 : Math.min(anchor.right + 14, vw - MASCOT_PX);
+      const top = Math.max(8, Math.min(anchor.top + anchor.height / 2 - MASCOT_PX / 2, vh - MASCOT_PX - 8));
+      Object.assign(active.mascot.style, { left: `${left}px`, top: `${top}px` });
+      const dx = anchor.left + anchor.width / 2 - (left + MASCOT_PX / 2);
+      const dy = anchor.top + anchor.height / 2 - (top + MASCOT_PX / 2);
+      this.avatarEl?.setAttribute('aim', String(Math.round((Math.atan2(dy, dx) * 180) / Math.PI)));
+    }
+    const bubbleW = Math.min(340, vw - 32);
+    const bubbleH = active.bubble.offsetHeight || 120;
+    const below = anchor.bottom + 12 + bubbleH <= vh;
+    const top = below ? anchor.bottom + 12 : Math.max(8, anchor.top - 12 - bubbleH);
+    const left = Math.max(16, Math.min(anchor.left, vw - bubbleW - 16));
+    Object.assign(active.bubble.style, { left: `${left}px`, top: `${top}px`, width: `${bubbleW}px` });
+  }
+
+  private async finishTour(active: ActiveTour, completed: boolean, skipped: string[]): Promise<void> {
+    for (const undo of active.undo) undo();
+    active.stage.remove();
+    if (this.avatarEl) {
+      if (this.avatarEl.parentElement !== this.els.avatar) this.els.avatar.appendChild(this.avatarEl);
+      this.avatarEl.removeAttribute('aim');
+    }
+    this.tour = null;
+    const held = this.heldState ?? this.director?.state ?? 'idle';
+    this.heldState = null;
+    this.setAvatarState(held);
+    const tour = this.tourList.find((t) => t.id === active.run.tour.id);
+    if (completed) {
+      this.director?.celebrate();
+      if (tour) tour.done = true;
+      try {
+        await this.client?.markTourDone(active.run.tour.id);
+      } catch {
+        // Done on this page anyway; the server will offer it again next time.
+      }
+    }
+    this.renderLog();
+    this.emit('vex-tour', { id: active.run.tour.id, event: completed ? 'done' : 'skipped', skipped });
   }
 
   private setPhase(phase: Phase): void {
@@ -508,6 +691,21 @@ export class VexAssistantElement extends HTMLElement {
         actions.appendChild(ok);
         item.appendChild(actions);
         tray.appendChild(item);
+      }
+      frag.appendChild(tray);
+    }
+    const offered = this.tourList.filter((t) => !t.done && !this.laterTours.has(t.id));
+    if (offered.length > 0) {
+      const tray = h('div', { class: 'news', role: 'region', 'aria-label': 'Tours' });
+      for (const t of offered) {
+        const go = h('button', { type: 'button', class: 'btn primary' }, 'Empezar');
+        go.addEventListener('click', () => void this.startTour(t.id));
+        const later = h('button', { type: 'button', class: 'btn' }, 'Ahora no');
+        later.addEventListener('click', () => {
+          this.laterTours.add(t.id);
+          this.renderLog();
+        });
+        tray.appendChild(h('article', { class: 'news-item tour-card', 'data-id': t.id }, h('strong', {}, `Tour: ${t.title}`), h('p', {}, `${t.steps.length} ${t.steps.length === 1 ? 'paso' : 'pasos'}. Te lo enseño señalando en la página.`), h('div', { class: 'news-actions' }, go, later)));
       }
       frag.appendChild(tray);
     }

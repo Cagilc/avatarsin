@@ -76,6 +76,8 @@ const POSES = {
   talking: { armL: 18, elbowL: -22, armR: -16, elbowR: 20, head: -3, finL: 0, finR: 0 },
   greeting: { armL: 12, elbowL: -8, armR: -125, elbowR: -20, head: -5, finL: 4, finR: -4 },
   success: { armL: 120, elbowL: 15, armR: -120, elbowR: -15, head: 0, finL: 8, finR: -8 },
+  /** Right arm straight out to the side; the runtime turns it towards the aim. */
+  point: { armL: 12, elbowL: -8, armR: -90, elbowR: 0, head: -3, finL: 2, finR: -2 },
 } satisfies Record<string, Pose>;
 const JOINT: Record<keyof Pose, string> = { armL: 'brazo-izq', elbowL: 'codo-izq', armR: 'brazo-der', elbowR: 'codo-der', head: 'cabeza', finL: 'aleta-izq', finR: 'aleta-der' };
 
@@ -146,6 +148,14 @@ export function vexClips(scale: number): Array<{ state: StateName; clip: Op & { 
     clip('attention', 'Atento', 0.8, true, [...poseTracks(POSES.listening), ...faceTracks('neutral', 'neutral'), track('torso', 'y', [[0, 0, 'out'], [0.4, -8 * s, 'inOut'], [1, 0]])]),
     clip('error', 'Error', 0.5, false, [...poseTracks(POSES.idle), ...faceTracks('wow', 'wow'), track('torso', 'x', [[0, 0], [0.15, 8 * s], [0.35, -8 * s], [0.55, 5 * s], [0.75, -3 * s], [1, 0]])]),
     clip('sleep', 'Dormido', 4, true, [...poseTracks(POSES.idle, new Set(['cabeza'])), ...faceTracks('happy', 'neutral'), track('cabeza', 'rotate', [[0, 6], [0.5, 9], [1, 6]]), track('torso', 'scaleY', [[0, 0.98], [0.5, 1], [1, 0.98]])]),
+    clip('point', 'Señalando', 1.6, true, [...poseTracks(POSES.point, new Set(['brazo-der'])), ...faceTracks('happy', 'happy'), track('brazo-der', 'rotate', [[0, -90], [0.5, -94], [1, -90]])]),
+    clip('celebrate', 'Celebrando', 1, false, [
+      ...poseTracks(POSES.success, new Set(['cabeza'])),
+      ...faceTracks('success', 'success'),
+      track('torso', 'y', [[0, 0, 'out'], [0.3, -40 * s, 'in'], [0.6, 0, 'out'], [0.8, -16 * s, 'in'], [1, 0]]),
+      track('torso', 'scaleY', [[0, 0.9], [0.15, 1.08], [0.6, 0.94], [0.75, 1.04], [1, 1]]),
+      track('cabeza', 'rotate', [[0, 0], [0.25, 10], [0.5, -10], [0.75, 6], [1, 0]]),
+    ]),
   ];
 }
 

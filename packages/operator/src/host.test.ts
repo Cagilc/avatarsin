@@ -35,11 +35,17 @@ describe('host manifest', () => {
     expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' } }, { id: 'citas', source: { kind: 'mcp-http', url: 'https://y' } }] }).success).toBe(false);
   });
 
-  it('keeps tours reserved until their workflow exists', () => {
-    expect(hostManifestSchema.parse({ ...MINIMAL, tours: [] }).tours).toEqual([]);
-    const r = hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'bienvenida' }] });
-    expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toMatch(/paso posterior/);
+  it('accepts tours: steps that point at registered elements, each with its pose and how it moves on', () => {
+    expect(hostManifestSchema.parse(MINIMAL).tours).toEqual([]);
+    const m = hostManifestSchema.parse({
+      ...MINIMAL,
+      tours: [{ id: 'paseo', title: 'Un paseo', when: 'first', steps: [{ target: 'titulo', say: 'Este es el título.' }, { say: 'Y eso es todo.', pose: 'celebrate' }, { target: 'buscador', say: 'Escribe aquí.', advanceOn: 'input' }] }],
+    });
+    expect(m.tours[0]?.steps.map((s) => `${s.pose}/${s.advanceOn}`)).toEqual(['point/next', 'celebrate/next', 'point/input']);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'x', title: 'T', steps: [{ say: 'Pulsa', advanceOn: 'click' }] }] }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'x', title: 'T', steps: [{ target: 'a', say: 'A', pose: 'sleep' }] }] }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'x', title: 'T', steps: [] }] }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'dup', title: 'A', steps: [{ say: 'a' }] }, { id: 'dup', title: 'B', steps: [{ say: 'b' }] }] }).success).toBe(false);
   });
 
   it('validates the domain and the avatar reference', () => {

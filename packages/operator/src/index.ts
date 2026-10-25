@@ -43,4 +43,5 @@ export type { ChatMessage, Completion, CompletionRequest, ContentBlock, ModelPro
 export { RUNNER_DEFAULTS, runOperator, type RunOptions, type RunResult } from './runner.ts';
 export { ScriptedProvider, missingInfo, planFor } from './providers/scripted.ts';
 export { DirectProvider, type DirectCall } from './providers/direct.ts';
+export { TOUR_POSES, elementIdSchema, tourSchema, tourStepSchema, type Tour, type TourInput, type TourStep } from './schema/tour.ts';
 export { MAX_QUICK_ACTIONS, announcementSchema, applicable, ctaSchema, engageIdSchema, quickActionSchema, type Announcement, type AnnouncementInput, type Audience, type Cta, type QuickAction } from './schema/engage.ts';

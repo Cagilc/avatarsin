@@ -1,4 +1,4 @@
-import type { Announcement, OperatorEvent, Principal, QuickAction, VexPersonality } from '@vex/operator';
+import type { Announcement, OperatorEvent, Principal, QuickAction, Tour, VexPersonality } from '@vex/operator';
 
 /** What GET /operator/info says, as far as the panel needs it. */
 export interface OperatorInfo {
@@ -15,6 +15,7 @@ export interface OperatorInfo {
 }
 
 export type VisibleAnnouncement = Announcement & { seen: boolean };
+export type VisibleTour = Tour & { done: boolean };
 
 export type StreamEvent = OperatorEvent | { type: 'session'; sessionId: string };
 
@@ -64,6 +65,15 @@ export class OperatorClient {
 
   async markSeen(id: string): Promise<void> {
     await json(await fetch(`${this.api}/engage/announcements/${encodeURIComponent(id)}/seen`, { method: 'POST', headers: await this.headers(), body: '{}' }));
+  }
+
+  /** The tours this person may take, with whether they completed each. Empty when the host has them off. */
+  async tours(): Promise<VisibleTour[]> {
+    return json(await fetch(`${this.api}/engage/tours`, { headers: await this.headers() }));
+  }
+
+  async markTourDone(id: string): Promise<void> {
+    await json(await fetch(`${this.api}/engage/tours/${encodeURIComponent(id)}/done`, { method: 'POST', headers: await this.headers(), body: '{}' }));
   }
 
   /** The quick-action buttons for this person. Empty when the host has them off. */
