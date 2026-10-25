@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, openContext, test } from '../fixtures.ts';
 import { PORTS } from '../playwright.config.ts';
 
 /**
@@ -58,9 +59,10 @@ async function waitFor(url: string, ms: number): Promise<void> {
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(120_000);
 
-test.beforeAll(async ({ browser }) => {
+test.beforeAll(async () => {
   // 1. Design, publish and integrate an avatar in the studio, as the owner would.
-  const page = await browser.newPage();
+  const context = await openContext();
+  const page = await context.newPage();
   await newAvatarFromSample(page, 'Pixel');
   await acceptProposal(page, 'dibujo plano, la antena rebota, se llama Pixel');
   const token = await page.evaluate(() => sessionStorage.getItem('vexstudio.token'));
@@ -83,7 +85,7 @@ test.beforeAll(async ({ browser }) => {
   await api('POST', `/api/avatars/${pixel.id}/publish`, {});
   const { key } = await api<{ key: { id: string } }>('POST', `/api/avatars/${pixel.id}/keys`, { label: 'Demo', origins: [DEMO, SITE], tools: TOOLS, maxRisk: 'irreversible' });
   const signing = await api<{ publicKey: string; keyId: string }>('GET', `/api/avatars/${pixel.id}/keys`);
-  await page.close();
+  await context.close();
   expect(saved.revision).toBeGreaterThan(pixel.revision);
 
   // 2. A host manifest that names that integration, and a Vex Core started with it.
@@ -98,12 +100,15 @@ test.beforeAll(async ({ browser }) => {
   const file = join(dir, 'manifest.json');
   writeFileSync(file, JSON.stringify(manifest));
   const apiDir = fileURLToPath(new URL('../../apps/api/', import.meta.url));
+  // Its output goes to a file, not to pipes: a pipe would keep this worker alive after the tests.
+  const log = openSync(join(dir, 'vex-core.log'), 'a');
   core = spawn(process.execPath, ['src/server.ts'], {
     cwd: apiDir,
     env: { ...process.env, PORT: String(PORTS.core), HOST: '127.0.0.1', VEX_DB: 'memory', VEX_PROVIDER: 'scripted', VEX_DEMO_LOGIN: '1', VEX_RATE_LIMIT: '200', CORS_ORIGIN: `${DEMO},${SITE}`, VEX_HOST_MANIFEST: file },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', log, log],
   });
-  core.stderr?.on('data', (d: Buffer) => process.stderr.write(`[vex core] ${d}`));
+  closeSync(log);
+  core.unref();
   await waitFor(`${CORE}/health`, 30_000);
 
   // Vex Core read and verified the grant: the integration's tools, the published personality.
@@ -114,8 +119,13 @@ test.beforeAll(async ({ browser }) => {
   expect(info.tools.map((t) => t.name)).toEqual([...TOOLS, 'leer_guia']);
 });
 
-test.afterAll(() => {
-  core?.kill();
+test.afterAll(async () => {
+  if (core && core.exitCode === null) {
+    const gone = new Promise<void>((resolve) => core!.once('exit', () => resolve()));
+    core.kill();
+    await Promise.race([gone, new Promise((r) => setTimeout(r, 5_000))]);
+  }
+  core = null;
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 

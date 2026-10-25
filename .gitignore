@@ -25,3 +25,6 @@ e2e/playwright-report/
 e2e-studio/test-results/
 e2e-studio/playwright-report/
 e2e-studio/screens/
+
+# Persistent Edge profile of the studio e2e on this machine (see CLAUDE.md)
+e2e-studio/.profile/

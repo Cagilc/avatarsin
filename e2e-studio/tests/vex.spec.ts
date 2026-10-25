@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../fixtures.ts';
 
 /** Vex, the operator's avatar, imported into the studio from its flattened rig: faces per state and visemes while talking. */
 test('Vex entra en el estudio con sus caras y sus visemas', async ({ page }) => {

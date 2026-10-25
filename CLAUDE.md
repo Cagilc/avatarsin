@@ -41,7 +41,7 @@ Diseño en `docs/diseno.md`. Paquetes con prefijo `@vexstudio/`.
 - Commits en inglés, conventional commits.
 - Antes de cambiar un contrato de `packages/operator`, actualizar el esquema Zod y sus tests.
 - Toda herramienta nueva entra con casos en `apps/api/evals/cases.ts`, incluido al menos uno negativo. Si cambia lo que hace una herramienta irreversible, darle `preview` para que la tarjeta enseñe lo real.
-- Playwright en este equipo: siempre con el Edge instalado (`channel: 'msedge'`, ya es el valor por defecto en local); el Chromium descargado no arranca por la directiva.
+- Playwright en este equipo: siempre con el Edge instalado (`channel: 'msedge'`, ya es el valor por defecto en local); el Chromium descargado no arranca por la directiva. ESET blinda los perfiles que escribe Edge (también los temporales de Playwright) y Playwright tarda ~26 min en rendirse al borrarlos: por eso `e2e-studio` usa en local un perfil persistente en `e2e-studio/.profile/` (`fixtures.ts`); importar `test` y `expect` de `../fixtures.ts`, no de `@playwright/test`.
 - Persistencia con `node:sqlite` (integrado en Node 24), nunca `better-sqlite3` ni otros addons nativos.
 
 - MCP: cliente propio en `packages/connectors/src/mcp/client.ts` (JSON-RPC por stdio y Streamable HTTP), sin `@modelcontextprotocol/sdk`. VectorCraft (`vectorcraft-cli.exe mcp --headless`) sirve de herramienta real para pruebas locales; en CI esas pruebas se omiten.
