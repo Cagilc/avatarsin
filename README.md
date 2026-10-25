@@ -104,4 +104,4 @@ El proyecto evita binarios nativos sin firmar: Vite 6 con `rollup` y `esbuild` e
 
 ## Licencia
 
-Código y assets de Vex: propiedad de César Augusto Gil. Pendiente de elegir licencia antes de publicar.
+Apache License 2.0 (`LICENSE` y `NOTICE`). Copyright 2026 César Augusto Gil.
