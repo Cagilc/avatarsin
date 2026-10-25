@@ -11,6 +11,9 @@ export const DEFAULT_PERSONALITY: VexPersonality = {
  * Stable per host (no dates, no per-request data) so the provider can cache it.
  * The screen context travels in the user message instead.
  */
+/** How the prompt names the platform when the host does not say (VEX_HOST_NAME). */
+export const DEFAULT_HOST_NAME = 'la plataforma';
+
 export function buildSystemPrompt(personality: VexPersonality, hostName: string, connectors: Array<{ id: string; name: string; description: string }> = []): string {
   const catalog = connectors.length
     ? [

@@ -6,6 +6,7 @@ import { TokenService } from './auth.ts';
 import { MockPlatform } from './platform/mock.ts';
 import { configFromEnv, createProvider } from './providers/index.ts';
 import { MemoryStore, SqliteStore } from './storage.ts';
+import { DEFAULT_HOST_NAME } from './system.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -37,7 +38,8 @@ const app = buildApp({
   provider,
   platform: new MockPlatform(),
   store,
-  hostName: 'MNEE',
+  // How Vex names the platform it operates in its prompt (e.g. the product's name).
+  hostName: env['VEX_HOST_NAME'] ?? DEFAULT_HOST_NAME,
   allowedOrigins,
   tokens,
   demoLogin,

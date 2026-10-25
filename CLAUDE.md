@@ -3,7 +3,7 @@
 Proyecto personal de César Augusto Gil. Idioma de trabajo: español (código y comentarios en inglés, UI en español). Extraído del monorepo Vex Studio (editor vectorial, en `Vectorlife/vex-studio-starter/vex-studio`); aquí vive solo el avatar y el operador.
 
 ## Qué es
-Un avatar animado (Vex) que ejecuta acciones en una plataforma de negocio (MNEE: marketing, equipos, solicitudes, correos, expedientes) con los permisos del usuario. Ver `README.md` para la estructura y `docs/operador.md` para el funcionamiento. Hoja de ruta de 5 hitos en `docs/vex-agente-viabilidad.md`; hechos los Hitos 0 y 1, el tramo 1 (puesta a punto: `docs/operador.md`), el tramo 2 (conectores: `docs/conectores.md`) y el endurecimiento de seguridad (`docs/seguridad.md`).
+Un avatar animado (Vex) que ejecuta acciones en cualquier plataforma de negocio que lo integre, con los permisos del usuario. Es un producto propio, no ligado a una plataforma concreta; la demo trae una plataforma simulada (contactos, expedientes, tareas, correos). Ver `README.md` para la estructura y `docs/operador.md` para el funcionamiento. Hoja de ruta de 5 hitos en `docs/vex-agente-viabilidad.md`; hechos los Hitos 0 y 1, el tramo 1 (puesta a punto: `docs/operador.md`), el tramo 2 (conectores: `docs/conectores.md`) y el endurecimiento de seguridad (`docs/seguridad.md`).
 
 ## Principios que no se negocian
 1. Toda herramienta declara `risk`; lo irreversible pide confirmación y detiene el bucle.

@@ -107,7 +107,7 @@ export function App() {
     <div className="shell">
       <header className="top">
         <div className="brand">
-          <span className="logo">MNEE</span>
+          <span className="logo">Plataforma demo</span>
           <span className="muted">plataforma · demo del operador Vex</span>
           <a className="pill" href="#estados">laboratorio del avatar</a>
           <a className="pill" href="#conectores">conectores</a>
