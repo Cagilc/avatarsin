@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
 import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
+import { caseFromSession } from './cases.ts';
 import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
 import { Engage } from './engage.ts';
@@ -121,6 +122,8 @@ const runBody = z.object({
 });
 
 const publishBody = z.object({ title: z.string().min(1).max(120).optional(), body: z.string().min(1).max(2000).optional() });
+
+const feedbackBody = z.object({ sessionId: z.string().min(1), turn: z.number().int().min(1), verdict: z.enum(['up', 'down']), reason: z.string().max(500).optional() });
 
 /** `ai`: the model stops, scripted mode goes on; `all`: Vex answers nothing; null: running. */
 const pauseBody = z.object({ mode: z.enum(['ai', 'all']).nullable() });
@@ -374,6 +377,42 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const body = chatBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
     return streamRun(req, reply, principal, body.data, { userMessage: body.data.message, provider: opts.provider, ai: true });
+  });
+
+  // A thumbs up or down on one reply, with the reason: what administrators look at to pick cases for the bank.
+  app.post('/operator/feedback', async (req, reply) => {
+    const principal = principalOf(req, reply);
+    if (!principal) return undefined;
+    const body = feedbackBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
+    const session = sessions.get(body.data.sessionId) ?? store.loadSession(body.data.sessionId);
+    if (!session || session.principal.id !== principal.id) return reply.code(404).send({ error: 'Sesión desconocida.' });
+    store.recordFeedback({ ts: new Date().toISOString(), sessionId: body.data.sessionId, principalId: principal.id, turn: body.data.turn, verdict: body.data.verdict, ...(body.data.reason?.trim() ? { reason: body.data.reason.trim() } : {}) });
+    return { ok: true };
+  });
+
+  // --- Sessions as eval cases: administrators ---
+  app.get('/admin/sessions', async (req, reply) => {
+    if (!adminOf(req, reply)) return undefined;
+    return store.listSessions(50).map((s) => {
+      const fb = store.feedbackFor(s.id);
+      return { ...s, feedback: { up: fb.filter((f) => f.verdict === 'up').length, down: fb.filter((f) => f.verdict === 'down').length, reasons: fb.filter((f) => f.reason).map((f) => ({ turn: f.turn, verdict: f.verdict, reason: f.reason })) } };
+    });
+  });
+
+  app.get('/admin/sessions/:id/case', async (req, reply) => {
+    if (!adminOf(req, reply)) return undefined;
+    const id = (req.params as { id: string }).id;
+    const session = sessions.get(id) ?? store.loadSession(id);
+    if (!session) return reply.code(404).send({ error: 'Sesión desconocida.' });
+    const query = req.query as { turn?: string; anonymize?: string };
+    const turn = query.turn !== undefined ? Number(query.turn) : undefined;
+    if (turn !== undefined && (!Number.isInteger(turn) || turn < 1)) return reply.code(400).send({ error: 'turn: entero a partir de 1.' });
+    try {
+      return caseFromSession({ session, audit: store.audit({ principalId: session.principal.id, sessionId: id, limit: 1000 }), ...(turn !== undefined ? { turn } : {}), anonymize: query.anonymize === '1' || query.anonymize === 'true' });
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // --- Spend and the pause switch: administrators ---

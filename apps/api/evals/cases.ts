@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+import { evalCaseJsonSchema } from '../src/cases.ts';
 import type { MockPlatform } from '../src/platform/mock.ts';
 
 /**
@@ -57,7 +61,7 @@ const SISTEMA = { id: 'sistema', name: 'Sistema' };
 
 export const LONG_REQUEST = 'Busca a Laura Pérez, abre expediente de residencia, crea una tarea para extranjería y mándale un correo pidiendo documentación';
 
-export const CASES: EvalCase[] = [
+const BUILT_IN: EvalCase[] = [
   // --- Flujos de varios pasos ---
   {
     id: 'flujo-laura-completo',
@@ -306,3 +310,19 @@ export const CASES: EvalCase[] = [
     scripted: 'skip',
   },
 ];
+
+/**
+ * Cases exported from real sessions (`GET /admin/sessions/:id/case`, `node evals/export.ts`)
+ * live next to this file as JSON and run with the built-in ones. They arrive marked
+ * `scripted: 'skip'`: the planner cannot parse free text, so only Claude measures them.
+ */
+export const LOCAL_CASES_PATH = fileURLToPath(new URL('./cases.local.json', import.meta.url));
+
+export function loadLocalCases(path = LOCAL_CASES_PATH): EvalCase[] {
+  if (!existsSync(path)) return [];
+  const parsed = z.array(evalCaseJsonSchema).safeParse(JSON.parse(readFileSync(path, 'utf8')));
+  if (!parsed.success) throw new Error(`${path}: ${parsed.error.issues.map((i) => `${i.path.map(String).join('.')}: ${i.message}`).join('; ')}`);
+  return parsed.data as EvalCase[];
+}
+
+export const CASES: EvalCase[] = [...BUILT_IN, ...loadLocalCases()];

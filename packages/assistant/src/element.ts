@@ -54,6 +54,8 @@ export interface Turn {
   error?: string;
   cancelled?: boolean;
   done: boolean;
+  /** The person's verdict on the reply, once given ('asking' while they write why). */
+  feedback?: 'up' | 'down' | 'asking';
 }
 
 const OUTCOME_LABEL: Record<Step['outcome'], string> = {
@@ -742,10 +744,50 @@ export class VexAssistantElement extends HTMLElement {
       if (this.pending && !turn.done) box.appendChild(this.renderConfirm(this.pending));
       if (turn.cancelled) box.appendChild(h('div', { class: 'msg vex is-stopped' }, 'Detenido. No he hecho nada más.'));
       else if (turn.reply || turn.error) box.appendChild(h('div', { class: `msg vex${turn.error ? ' is-error' : ''}` }, turn.error ?? turn.reply));
+      if (turn.done && !turn.cancelled && turn.reply && this.session) box.appendChild(this.renderFeedback(turn));
       frag.appendChild(box);
     }
     log.replaceChildren(frag);
     log.scrollTo({ top: log.scrollHeight });
+  }
+
+  /** 👍 sends at once; 👎 asks why first (optional). What the person says goes to the administrator, never to the model. */
+  private renderFeedback(turn: Turn): HTMLElement {
+    const row = h('div', { class: 'feedback' });
+    if (turn.feedback === 'up' || turn.feedback === 'down') {
+      row.appendChild(h('span', { class: 'muted' }, turn.feedback === 'up' ? 'Gracias por el 👍' : 'Gracias, lo revisaremos.'));
+      return row;
+    }
+    const index = this.turns.indexOf(turn) + 1;
+    const send = async (verdict: 'up' | 'down', reason?: string) => {
+      turn.feedback = verdict;
+      this.renderLog();
+      try {
+        if (this.session) await this.client?.feedback(this.session, index, verdict, reason);
+      } catch {
+        // The verdict stays on this page; nothing else depends on it.
+      }
+    };
+    if (turn.feedback === 'asking') {
+      const input = h('input', { type: 'text', placeholder: '¿Qué ha fallado? (opcional)', maxlength: '500', 'aria-label': 'Motivo' });
+      const ok = h('button', { type: 'button', class: 'btn' }, 'Enviar');
+      ok.addEventListener('click', () => void send('down', input.value.trim() || undefined));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void send('down', input.value.trim() || undefined);
+      });
+      row.append(input, ok);
+      queueMicrotask(() => input.focus());
+      return row;
+    }
+    const up = h('button', { type: 'button', class: 'thumb', 'aria-label': 'Buena respuesta', title: 'Buena respuesta' }, '👍');
+    const down = h('button', { type: 'button', class: 'thumb', 'aria-label': 'Mala respuesta', title: 'Mala respuesta' }, '👎');
+    up.addEventListener('click', () => void send('up'));
+    down.addEventListener('click', () => {
+      turn.feedback = 'asking';
+      this.renderLog();
+    });
+    row.append(up, down);
+    return row;
   }
 
   private renderConfirm(action: ActionRequest): HTMLElement {

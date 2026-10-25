@@ -56,6 +56,10 @@ button, textarea { font: inherit; color: inherit; }
 .msg.user { justify-self: end; background: var(--vex-accent-soft); color: #e3eaff; }
 .msg.vex { justify-self: start; background: var(--vex-bg-2); }
 .msg.is-error { background: var(--vex-danger-bg); color: var(--vex-danger); }
+.feedback { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.thumb { padding: 2px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; font-size: 13px; opacity: 0.6; }
+.thumb:hover { opacity: 1; border-color: var(--vex-border-strong); }
+.feedback input { flex: 1; padding: 4px 8px; border: 1px solid var(--vex-border-strong); border-radius: 6px; background: var(--vex-field); color: var(--vex-text); font: inherit; }
 .msg.notice { justify-self: stretch; max-width: 100%; background: var(--vex-warning-bg); color: var(--vex-warning); font-size: 12px; }
 .steps { list-style: none; margin: 0; padding: 0 0 0 6px; display: grid; gap: 4px; border-left: 2px solid var(--vex-border-strong); }
 .step { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding-left: 8px; font-size: 12px; color: var(--vex-text-2); }

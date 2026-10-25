@@ -67,6 +67,11 @@ export class OperatorClient {
     await json(await fetch(`${this.api}/engage/announcements/${encodeURIComponent(id)}/seen`, { method: 'POST', headers: await this.headers(), body: '{}' }));
   }
 
+  /** A thumbs up or down on one reply (turns are 1-based within the session), with the reason. */
+  async feedback(sessionId: string, turn: number, verdict: 'up' | 'down', reason?: string): Promise<void> {
+    await json(await fetch(`${this.api}/operator/feedback`, { method: 'POST', headers: await this.headers(), body: JSON.stringify({ sessionId, turn, verdict, ...(reason ? { reason } : {}) }) }));
+  }
+
   /** The tours this person may take, with whether they completed each. Empty when the host has them off. */
   async tours(): Promise<VisibleTour[]> {
     return json(await fetch(`${this.api}/engage/tours`, { headers: await this.headers() }));

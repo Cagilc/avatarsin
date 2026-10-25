@@ -131,7 +131,11 @@ Mejoras:
   - Medición por respuesta del modelo (tokens y coste estimado con `pricing.ts`, compartido con el banco), cargada a la persona y a la instalación; en SQLite. Botones con herramienta y modo guion no se miden.
   - Topes encendidos por defecto: 300.000 tokens por persona y día UTC, 50 USD por instalación y mes UTC; aviso al 80 %; `0` quita un tope. Al tope o en pausa, la petición corre en modo guion y el flujo lo dice con el evento nuevo `notice` (aditivo en el contrato de eventos; el panel lo enseña).
   - Pausa de administrador persistente (`settings`): `ai` (modo guion) o `all` (503 en chat y botones); auditada.
-  - Pendiente del paso 7 sin clave: «de sesión real a caso del banco» y «aprobaciones por canal».
+- **Hecho el 2026-10-26**, rama local `wf/07-casos`: **de sesión real a caso del banco** (backlog D de Oscar). Puertas: tipado OK, 230 pruebas (api 89, operator 44, format 22, runtime 12, connectors 16, server 32, assistant 15), banco 15/15, e2e 9/9 y 8/8, `salud.js` limpio. Decisiones:
+  - El caso sale de un turno del historial (petición y contexto de pantalla) y de la auditoría de sus acciones (llamadas en orden, rechazadas o denegadas, correos confirmados con destinatario, expedientes, tareas, citas, principal); nunca del texto de la respuesta.
+  - Los casos exportados viven en `apps/api/evals/cases.local.json` (JSON validado, sin `setup`) y el banco los carga con los de `cases.ts`; llegan como `scripted: 'skip'` con una nota que pide revisarlos. Anonimización básica opcional: correos y teléfonos sustituidos por alias coherentes.
+  - 👍/👎 con motivo por respuesta en el panel (`POST /operator/feedback`, solo sobre la propia sesión); `GET /admin/sessions` lista conversaciones con votos y motivos para elegir qué exportar; `pnpm eval:export -- --list | --session <id>`.
+  - Pendiente del paso 7 sin clave: «aprobaciones por canal».
 
 ### Cuándo están pulidas las bases
 Un avatar del estudio opera en la demo con su personalidad y sus permisos; el banco con Claude supera el mínimo; la documentación cuenta lo que hay. Entonces se deciden repositorio y licencia y se publica.

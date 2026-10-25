@@ -161,6 +161,18 @@ pnpm eval -- --only flujo-laura-completo,negativo-sin-destinatario
 
 Cada ejecución deja un JSON y `apps/api/evals/reports/latest-<proveedor>.md` con acierto por categoría, latencia p50 y máxima, acciones por encargo y coste estimado. El modo guion pasa los 15 que entiende; **con Claude no se ha ejecutado todavía** porque no hay clave en este equipo. Los casos de inyección y de lenguaje natural solo dicen algo con Claude.
 
+**De una sesión real a un caso del banco.** Cada respuesta lleva 👍/👎 en el panel; el 👎 pide un motivo (opcional) y todo va a `POST /operator/feedback`, que solo guarda lo de la propia sesión. Un administrador lista las conversaciones con sus votos (`GET /admin/sessions`) y exporta un turno como borrador de caso (`GET /admin/sessions/:id/case?turn=n&anonymize=1`, `apps/api/src/cases.ts`): la petición y su contexto de pantalla salen del historial; de la auditoría salen las llamadas que funcionaron (en orden), las rechazadas o denegadas (`forbidden`), los correos y sus destinatarios tal como se confirmaron, los expedientes y tareas creados, las citas del conector y el usuario. Con `anonymize`, los correos y teléfonos se sustituyen por alias, los mismos en la petición y en las expectativas. Desde la terminal:
+
+```bash
+pnpm eval:export -- --list
+```
+
+```bash
+pnpm eval:export -- --session <id> --turn 1 --anonymize
+```
+
+El caso se añade a `apps/api/evals/cases.local.json`, que el banco carga junto a los de `cases.ts`. Llega marcado `scripted: 'skip'` (el planificador por palabras clave no entiende texto libre) y con una nota que pide revisar las expectativas antes de darlo por bueno; los que pasen la revisión pueden moverse a `cases.ts`.
+
 ## Pruebas en navegador real
 
 `e2e/` con Playwright: 9 pruebas que abren la demo y comprueban el flujo de cinco pasos con la tarjeta del correo real, el rechazo, **Detener**, el contexto de pantalla, la pregunta cuando falta destinatario el laboratorio del avatar (8 estados, 5 caras, 9 bocas, nivel de detalle por tamaño) y la conexión de una herramienta nueva de principio a fin (importar, revisar riesgos, usarla con confirmación). Adjuntan capturas del avatar en cada fase.

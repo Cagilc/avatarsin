@@ -39,6 +39,24 @@ export interface StoredSession {
   history: ChatMessage[];
 }
 
+export interface SessionSummary {
+  id: string;
+  principal: Principal;
+  /** User messages in the conversation. */
+  turns: number;
+  updatedAt: string;
+}
+
+/** A person's thumbs up or down on one reply, with their reason. */
+export interface FeedbackRecord {
+  ts: string;
+  sessionId: string;
+  principalId: string;
+  turn: number;
+  verdict: 'up' | 'down';
+  reason?: string;
+}
+
 export interface AuditQuery {
   principalId: string;
   sessionId?: string;
@@ -55,6 +73,10 @@ export interface OperatorStore {
   audit(query: AuditQuery): AuditEntry[];
   loadSession(id: string): StoredSession | null;
   saveSession(session: StoredSession): void;
+  /** Most recently updated conversations first. */
+  listSessions(limit?: number): SessionSummary[];
+  recordFeedback(record: FeedbackRecord): void;
+  feedbackFor(sessionId: string): FeedbackRecord[];
   listConnectors(): ConnectorManifest[];
   saveConnector(manifest: ConnectorManifest): void;
   deleteConnector(id: string): void;
@@ -80,9 +102,13 @@ export interface OperatorStore {
 const DEFAULT_AUDIT_LIMIT = 500;
 
 /** For tests and local demos. Copies on save so it behaves like real persistence. */
+const countTurns = (history: ChatMessage[]) => history.filter((m) => m.role === 'user' && m.content.some((b) => b.type === 'text')).length;
+
 export class MemoryStore implements OperatorStore {
   readonly auditEntries: AuditEntry[] = [];
   private readonly sessions = new Map<string, StoredSession>();
+  private readonly sessionTimes = new Map<string, string>();
+  readonly feedback: FeedbackRecord[] = [];
 
   recordAudit(entry: AuditEntry): void {
     this.auditEntries.push(entry);
@@ -100,6 +126,22 @@ export class MemoryStore implements OperatorStore {
 
   saveSession(session: StoredSession): void {
     this.sessions.set(session.id, structuredClone(session));
+    this.sessionTimes.set(session.id, new Date().toISOString());
+  }
+
+  listSessions(limit = 50): SessionSummary[] {
+    return [...this.sessions.values()]
+      .map((s) => ({ id: s.id, principal: structuredClone(s.principal), turns: countTurns(s.history), updatedAt: this.sessionTimes.get(s.id) ?? '' }))
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+      .slice(0, limit);
+  }
+
+  recordFeedback(record: FeedbackRecord): void {
+    this.feedback.push({ ...record });
+  }
+
+  feedbackFor(sessionId: string): FeedbackRecord[] {
+    return this.feedback.filter((f) => f.sessionId === sessionId).map((f) => ({ ...f }));
   }
 
   private readonly connectors = new Map<string, ConnectorManifest>();
@@ -197,6 +239,9 @@ export class SqliteStore implements OperatorStore {
   private readonly auditByPrincipal: StatementSync;
   private readonly selectSession: StatementSync;
   private readonly upsertSession: StatementSync;
+  private readonly selectSessions: StatementSync;
+  private readonly insertFeedback: StatementSync;
+  private readonly selectFeedback: StatementSync;
   private readonly selectConnectors: StatementSync;
   private readonly upsertConnector: StatementSync;
   private readonly removeConnector: StatementSync;
@@ -277,6 +322,16 @@ export class SqliteStore implements OperatorStore {
         key text primary key,
         value text not null
       );
+      create table if not exists feedback (
+        id integer primary key,
+        ts text not null,
+        session_id text not null,
+        principal_id text not null,
+        turn integer not null,
+        verdict text not null,
+        reason text
+      );
+      create index if not exists feedback_session on feedback (session_id);
     `);
     this.insertAudit = this.db.prepare('insert into audit (ts, session_id, principal_id, tool, outcome, entry) values (?, ?, ?, ?, ?, ?)');
     this.auditBySession = this.db.prepare('select entry from audit where principal_id = ? and session_id = ? order by id desc limit ?');
@@ -286,6 +341,9 @@ export class SqliteStore implements OperatorStore {
       'insert into sessions (id, principal_id, principal, history, updated_at) values (?, ?, ?, ?, ?) ' +
         'on conflict (id) do update set history = excluded.history, updated_at = excluded.updated_at',
     );
+    this.selectSessions = this.db.prepare('select id, principal, history, updated_at from sessions order by updated_at desc limit ?');
+    this.insertFeedback = this.db.prepare('insert into feedback (ts, session_id, principal_id, turn, verdict, reason) values (?, ?, ?, ?, ?, ?)');
+    this.selectFeedback = this.db.prepare('select ts, session_id, principal_id, turn, verdict, reason from feedback where session_id = ? order by id');
     this.selectConnectors = this.db.prepare('select manifest from connectors order by id');
     this.upsertConnector = this.db.prepare(
       'insert into connectors (id, manifest, updated_at) values (?, ?, ?) on conflict (id) do update set manifest = excluded.manifest, updated_at = excluded.updated_at',
@@ -328,6 +386,30 @@ export class SqliteStore implements OperatorStore {
 
   saveSession(session: StoredSession): void {
     this.upsertSession.run(session.id, session.principal.id, JSON.stringify(session.principal), JSON.stringify(session.history), new Date().toISOString());
+  }
+
+  listSessions(limit = 50): SessionSummary[] {
+    return (this.selectSessions.all(limit) as Array<{ id: string; principal: string; history: string; updated_at: string }>).map((r) => ({
+      id: r.id,
+      principal: JSON.parse(r.principal) as Principal,
+      turns: countTurns(JSON.parse(r.history) as ChatMessage[]),
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  recordFeedback(f: FeedbackRecord): void {
+    this.insertFeedback.run(f.ts, f.sessionId, f.principalId, f.turn, f.verdict, f.reason ?? null);
+  }
+
+  feedbackFor(sessionId: string): FeedbackRecord[] {
+    return (this.selectFeedback.all(sessionId) as Array<{ ts: string; session_id: string; principal_id: string; turn: number; verdict: 'up' | 'down'; reason: string | null }>).map((r) => ({
+      ts: r.ts,
+      sessionId: r.session_id,
+      principalId: r.principal_id,
+      turn: r.turn,
+      verdict: r.verdict,
+      ...(r.reason ? { reason: r.reason } : {}),
+    }));
   }
 
   listConnectors(): ConnectorManifest[] {
