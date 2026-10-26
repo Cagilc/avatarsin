@@ -64,17 +64,17 @@ Un nivel es un permiso, no un producto aparte: cada uno se activa en `features` 
 P1 y P2 desbloquean cualquier uso real y son independientes. Después P3 y P4 (lo que más se ve en una demo). P5 cuando haya cifras de inyección. P6 queda como límite.
 
 ## Cómo proponemos trabajar
-- Respetamos la petición de abrir una **issue por propuesta** antes de tocar `apps/api` o `packages/operator`. Si te parece bien, las abrimos nosotros a partir de este texto.
-- Un PR por propuesta, con contratos Zod y tests primero, y fila en `docs/seguridad.md` cuando cambie una defensa.
-- Si prefieres no recibir PRs en esas zonas mientras están en obras, dinos cuáles tomarías tú y cuáles hacemos nosotros (P2 y P3 son pequeñas y bien acotadas).
-- Fable para refinar cada propuesta y revisar cada diff, como en el plan anterior.
+- **El código de Vex lo hace César** con su proceso (Fable planifica y revisa, Sonnet ejecuta). Nosotros no enviaremos PRs de código a la herramienta; aportamos planes, propuestas y respuestas a las dudas de su agente. Solo una corrección pequeña e importante (por ejemplo de seguridad) iría como PR, y siempre previa conversación.
+- Si su agente necesita aclarar una propuesta, puede dejar la pregunta como comentario en este PR o en una issue y se la respondemos.
+- Nosotros probamos por fuera del repo (manifiestos, filtros y guiones de demo sobre nuestros propios sistemas) y le devolvemos los resultados y los huecos que encontremos.
+- Para cada propuesta, un PR de César con contratos Zod y tests primero, y fila en `docs/seguridad.md` cuando cambie una defensa.
 
 ## Dirección de producto (para conversar, no es una decisión)
 La combinación diferencial parece ser **copiloto gobernado + mascota de la marca + instalación por cliente**. El encaje más claro: software de gestión para servicios regulados (despachos, gestorías, clínicas), donde aprobar y auditar es un argumento de venta, y agencias que entregan un asistente con la mascota de la marca del cliente. Un objetivo de 90 días podría ser **dos socios de diseño en uso controlado, con identidad real y medido con Claude**. Es una hipótesis a contrastar con la competencia, que no hemos investigado.
 
 ## Preguntas para César
 1. ¿Te encajan los niveles y su orden? ¿Falta o sobra alguno?
-2. ¿Cuáles de P1–P6 tomas tú y cuáles hacemos nosotros?
+2. ¿En qué orden las planificas tú? ¿Hay alguna que prefieras descartar o aplazar?
 3. ¿El modo presentador (P4) debe vivir en `packages/assistant` o en un paquete aparte?
 4. ¿Hay ya una forma preferida de medir con Claude para fijar los mínimos de los bancos?
 5. ¿El estudio puede generar un avatar desde un logo PNG, o conviene aportar un SVG?
