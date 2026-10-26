@@ -371,19 +371,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         emit: send,
         confirm: (action) => {
           const wait = sessions.waitForConfirmation(session, action, confirmTimeoutMs);
-          if (notifier) {
-            // The card also goes out through the host's channels; a failed delivery never blocks the card itself.
-            const token = approvalTokens.issue({ sessionId: session.id, actionId: action.id, principalId: principal.id }, confirmTimeoutMs);
-            const expiresAt = new Date((opts.now ?? Date.now)() + confirmTimeoutMs).toISOString();
-            void notifier.notify({ sessionId: session.id, principal, action, approveUrl: `${publicUrl}/approve/${token}`, expiresAt }).then((results) => {
+          if (!notifier) return wait;
+          // The card also goes out through the host's channels; a failed delivery never blocks the card itself.
+          // The decision is applied once the delivery report is in (bounded by the webhook timeout), so the
+          // notice and the audit entries always come before the outcome of the action.
+          const token = approvalTokens.issue({ sessionId: session.id, actionId: action.id, principalId: principal.id }, confirmTimeoutMs);
+          const expiresAt = new Date((opts.now ?? Date.now)() + confirmTimeoutMs).toISOString();
+          const notified = notifier
+            .notify({ sessionId: session.id, principal, action, approveUrl: `${publicUrl}/approve/${token}`, expiresAt })
+            .then((results) => {
               for (const r of results) {
                 store.recordAudit({ ts: new Date().toISOString(), sessionId: session.id, principal, actionId: crypto.randomUUID(), tool: 'avisar_aprobacion', driver: 'platform', risk: 'read', params: { canal: r.kind, accion: action.id }, summary: `Aviso de aprobación por ${r.kind}: ${action.summary}`, outcome: r.ok ? 'ok' : 'error', ...(r.error ? { error: r.error } : {}), durationMs: 0 });
               }
               const delivered = results.filter((r) => r.ok).map((r) => (r.kind === 'log' ? 'el registro del servidor' : r.kind));
               if (delivered.length) send({ type: 'notice', message: `Te he avisado por ${delivered.join(' y ')} por si prefieres aprobarlo desde allí.` });
-            });
-          }
-          return wait;
+            })
+            .catch((err: unknown) => app.log.warn({ err }, 'approval notification failed'));
+          return Promise.all([wait, notified]).then(([decision]) => decision);
         },
         audit: (entry) => store.recordAudit(entry),
         signal: controller.signal,
