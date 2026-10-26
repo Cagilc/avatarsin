@@ -39,7 +39,7 @@ Un **producto propio** de César Augusto Gil (GitHub `Cagilc`): un avatar animad
 ### Decisiones pendientes de César
 7. Proveedor de imágenes para avatares realistas.
 8. Proteger `main` en `Cagilc/avatarsin`: PR obligatoria con su aprobación y CI en verde. Es un ajuste de su cuenta y lo hace él. **Urgente ahora**: con `vex` subido y sin protección, Oscar (escritura) puede empujar directamente a `main`.
-9. Publicar las respuestas a Oscar (`docs/borradores/`).
+9. ~~Publicar las respuestas a Oscar.~~ **Hecho el 2026-10-26**: revisión «Request changes» en la PR #1 (con la rama `review/pr1-pruebas`) y comentario largo en la PR #2; textos finales en `docs/borradores/`.
 
 ## 2 · Entorno y reglas de trabajo
 - Windows 11 con Control de aplicaciones: bloquea binarios nativos sin firmar. Vite 6 con rollup/esbuild en wasm, `node:sqlite`, imagen en JS puro. **Python no sirve.** Node 24 (type stripping, imports `.ts`), pnpm 10, TypeScript 7, Zod 4, Vitest 3, Fastify 5, React 19.

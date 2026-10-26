@@ -1,7 +1,6 @@
-# Borrador · respuesta a Oscar en la PR #1 (`fix/ssrf-outbound-guard`)
+# Respuesta a Oscar en la PR #1 (`fix/ssrf-outbound-guard`)
 
-> Sin publicar. Tipo de revisión propuesto: **Request changes**. César decide si se publica y cuándo.
-> Fuente: `informe-aporte-oscar.md` (revisión del 2026-10-25 en un clon aislado) y sus pruebas `outbound.review.test.ts`.
+> **Publicada el 2026-10-26** como revisión «Request changes» en https://github.com/Cagilc/avatarsin/pull/1. Pruebas y parche en la rama `review/pr1-pruebas`.
 
 ---
 
@@ -9,8 +8,10 @@ Hola, Oscar:
 
 Gracias por la PR. Cierra de verdad dos huecos que teníamos: las redirecciones que acababan en una dirección interna y la API key que viajaba al destino de una redirección. Queremos aceptarla, pero antes hay que cambiar algunas cosas. La hemos probado a fondo en un clon aparte, con servidores HTTP reales en 127.0.0.1 y el `fetch` de Node, no solo con simulaciones.
 
+**Antes de nada: `main` ha cambiado.** Acabo de subir el trabajo de estas semanas (manifiesto de host, asistente incrustable, anuncios, tours, límites de gasto, aprobaciones por canal y el estudio de avatares, que no conocías). Tu rama tiene conflictos, pero solo en `apps/api/src/app.ts` y `docs/seguridad.md`: `guard.ts`, `connectors.ts` y el cliente MCP no han cambiado por nuestra parte, así que el rebase debería ser corto. En `app.ts`, `fail()` sigue donde estaba (ahí entra el punto 2). El repositorio ya tiene `LICENSE` Apache-2.0: tu aporte entra bajo esa licencia.
+
 **Lo que funciona bien**
-- `pnpm install --frozen-lockfile`, `typecheck`, `test` (25/16/55), banco 15/15, `build` y **`pnpm e2e` 9/9** (no lo habías ejecutado; ya está hecho).
+- `pnpm install --frozen-lockfile`, `typecheck`, `test`, banco 15/15, `build` y **`pnpm e2e` 9/9** sobre la base de la PR (no lo habías ejecutado; ya está hecho).
 - Las redirecciones se siguen a mano y se comprueban en cada salto, se quitan las credenciales al cambiar de origen, la `baseUrl` se comprueba al ejecutar y el MCP remoto pasa por la guardia.
 - Sin dependencias ni scripts nuevos y sin tocar CI.
 
@@ -25,22 +26,14 @@ Gracias por la PR. Cierra de verdad dos huecos que teníamos: las redirecciones 
 7. Menor: si la entrada es un objeto `Request`, se pierden sus cabeceras y su cuerpo. Hoy nadie lo usa, pero conviene rechazarlo o tratarlo.
 8. Opcional: una línea en `docs/conectores.md` sobre redirecciones y credenciales.
 
-**Estado de las pruebas de la revisión** (`apps/api`, 78 casos):
+**Estado de las pruebas de la revisión** (`apps/api` sobre la base de la PR, 78 casos):
 
 | | Superadas | Fallidas | Qué falla |
 |---|---|---|---|
 | PR tal cual | 66 | 12 | puntos 1 (×2) y 2, `isInternalHost` (×7), rebinding |
 | Con los arreglos 1 y 2 (unas 9 líneas) | 70 | 8 | `isInternalHost` (×7), rebinding |
 
-Te adjunto el fichero de pruebas (`outbound.review.test.ts`, 23 casos) y el parche de los puntos 1 y 2 por si te ahorran tiempo. Úsalos libremente.
+El fichero de pruebas (`outbound.review.test.ts`, 23 casos) y el parche de los puntos 1 y 2 están en la rama `review/pr1-pruebas` de este repositorio, por si te ahorran tiempo. Úsalos libremente.
 
 Un abrazo,
 César
-
----
-
-## Notas internas (no van en el comentario)
-- Adjuntos: `outbound.review.test.ts` y `propuesta-arreglos-pr1.patch`, en la carpeta de notas de la sesión. Revisar antes que no contengan rutas locales del equipo.
-- La PR va contra `avatarsin` (`c4384e1`). El trabajo sigue en `Desktop\vex`, así que los arreglos tendrán que pasar también allí (`apps/api/src/guard.ts`). El paso 1 del plan maestro (conectores del manifiesto) depende de esta guardia corregida.
-- Licencia (decisión 1): Apache-2.0. `avatarsin` no tiene `LICENSE`: conviene subirla (con aprobación de César) antes de aceptar la PR, para que el aporte entre bajo esa licencia.
-- Antes de publicar: proteger `main` en GitHub (PR obligatoria, aprobación de César y CI en verde). Oscar tiene permiso `write`.
