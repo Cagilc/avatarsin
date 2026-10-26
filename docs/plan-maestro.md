@@ -111,6 +111,11 @@ Mejoras:
 
 ### Paso 4 · Medir con Claude
 - Requiere que César ponga su clave en los `.env`. Banco del operador con Claude y banco nuevo del asistente del estudio; fijar mínimos con datos.
+- **Preparado el 2026-10-26** en la rama local `wf/04-banco-estudio`: el banco del asistente del estudio (`apps/server/evals/`: `fixtures.ts`, `cases.ts`, `harness.ts`, `run.ts`, `evals.test.ts`; `pnpm eval:studio -- --provider heuristic|claude`). 15 casos en seis categorías (esqueleto, petición, preguntas, respeto, animación, lenguaje); el geométrico pasa sus 12 y los 3 de lenguaje natural quedan para Claude. Decisiones tomadas al hacerlo:
+  - Cada propuesta se aplica de verdad al documento con `applyOps(…, 'ai')`, y también cada opción de cada pregunta: una propuesta que no aplica suspende, igual que en el servidor.
+  - Las comprobaciones miran el documento resultante (padres, papeles, física efectiva, realismo, acabado, gravedad, estados con clip, nombre, tono), no el texto de las operaciones; lo fijado se vigila por `pathsOf(op)` contra la procedencia `user`.
+  - Lo que hace el geométrico marca la expectativa cuando es razonable: con volumen (o con un PNG, o con realismo fijado alto) el material se ve, así que se pregunta; con todo dicho en la frase, nada.
+  - Queda para cuando haya clave: `pnpm eval:studio -- --provider claude` y `pnpm eval -- --provider anthropic`, y fijar `--min-pass` con datos. CI ya tiene el banco geométrico en `pnpm test`.
 
 ### Paso 5 · Tours y onboarding (workflow 03) con poses del estudio
 - **Hecho el 2026-10-25** en la rama local `wf/05-tours` (antes que el paso 4, que espera la clave). Puertas: tipado OK, 218 pruebas (operator 44, format 22, runtime 12, connectors 16, server 32, api 77, assistant 15), banco 15/15, e2e del operador 9/9, e2e del estudio 8/8 (45 s), `salud.js` limpio. Decisiones tomadas al hacerlo:

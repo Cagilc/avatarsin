@@ -19,6 +19,7 @@
     "e2e:studio": "pnpm --filter @vexstudio/e2e e2e",
     "eval": "pnpm --filter @vex/api eval",
     "user:add": "pnpm --filter @vexstudio/server user:add",
-    "eval:export": "pnpm --filter @vex/api eval:export"
+    "eval:export": "pnpm --filter @vex/api eval:export",
+    "eval:studio": "pnpm --filter @vexstudio/server eval"
   }
 }

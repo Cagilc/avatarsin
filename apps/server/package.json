@@ -9,7 +9,8 @@
     "start": "node src/server.ts",
     "user:add": "node src/cli/user-add.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "eval": "node evals/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.2.0",

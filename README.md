@@ -83,6 +83,7 @@ Comprobaciones:
 pnpm typecheck
 pnpm test                            # contratos, bucle, conectores, API y puerta del banco
 pnpm eval -- --provider scripted     # banco de 28 encargos (15 en modo guion)
+pnpm eval:studio -- --provider heuristic  # banco del asistente del estudio: 15 peticiones (12 con el geométrico)
 pnpm e2e                             # 9 pruebas del operador en navegador real (en Windows usa Edge)
 pnpm e2e:studio                      # el estudio en Edge: 4 recorridos, Vex importado con caras y visemas,
                                      # y el avatar publicado operando en la demo y en una página HTML simple
@@ -90,7 +91,7 @@ pnpm e2e:studio                      # el estudio en Edge: 4 recorridos, Vex imp
 
 **Conectar una herramienta nueva:** arranca la agenda de muestra (`pnpm dev:citas`), abre `http://localhost:5174/#conectores`, pulsa Importar, revisa el riesgo de cada acción, activa lo que quieras y guarda. Desde el chat: `usa citas_listar_huecos {"fecha":"2026-10-27"}`, o en lenguaje natural si hay clave de Claude. Detalle y reglas en `docs/conectores.md`.
 
-Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
+Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco, y `pnpm eval:studio -- --provider claude` al asistente del estudio. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
 
 ## Cómo se integra en una plataforma real
 

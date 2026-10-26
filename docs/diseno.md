@@ -46,6 +46,18 @@ Dos implementaciones con el mismo contrato (`assistant/types.ts`):
 - **Geométrica** (sin clave): reglas sobre las cajas de las piezas y palabras de la petición.
 - **Claude** (con `ANTHROPIC_API_KEY`): responde por una herramienta forzada con operaciones tipadas. Si su salida no valida, o intenta tocar capacidades o lo fijado, el servidor usa la geométrica y lo dice.
 
+### El banco del asistente
+
+`apps/server/evals/cases.ts`: 15 peticiones sobre documentos reales (la mascota de muestra recién importada, con siete piezas sueltas; la misma con pivote y estilo fijados por una persona; un PNG; un avatar ya montado; un documento vacío) con lo que una buena propuesta debe dejar: de quién cuelga cada pieza y su papel, qué rebota y cuánto, realismo, acabado, gravedad, animación en los 10 estados, qué preguntas hace (y cuál recomienda), nombre y tono, lo fijado intacto y ninguna capacidad tocada. Categorías: esqueleto, petición, preguntas, respeto, animación y lenguaje natural. Cada propuesta se **aplica de verdad** al documento (`applyOps` como `ai`, también cada opción de cada pregunta) antes de comprobarla.
+
+```bash
+pnpm eval:studio -- --provider heuristic   # gratis: puerta de regresión (12 casos; los 3 de lenguaje son solo para Claude)
+pnpm eval:studio -- --provider claude      # mide a Claude: cuesta dinero, necesita la clave en apps/server/.env
+pnpm eval:studio -- --only esqueleto-mascota --min-pass 0.8
+```
+
+Deja un JSON y `apps/server/evals/reports/latest-<asistente>.md` con acierto por categoría, preguntas y operaciones por caso y latencia. El geométrico pasa sus 12 (también como test en `pnpm test`); **con Claude no se ha ejecutado todavía**: es el paso 4 del plan.
+
 ## Seguridad
 
 | Amenaza | Defensa |
@@ -87,7 +99,7 @@ El sitio cambia el atributo `state` para que hable, piense o salude, y `aim` (gr
 
 - `pnpm typecheck` y `pnpm test`: format 17, runtime 9, server 32.
 - `pnpm e2e` en Edge: 4 recorridos (logo → propuesta → preguntas → aceptar con física en vivo; pivote fijado que el asistente respeta; control de estilo; publicar, incrustar en otro dominio, bloquear otro sitio, rechazar paquete y dibujo alterados, revocar).
-- Sin probar: el asistente con Claude (no hay clave en este equipo; probado con un cliente simulado).
+- Sin probar: el asistente con Claude (no hay clave en este equipo; probado con un cliente simulado). El banco `pnpm eval:studio` está listo para medirlo (2026-10-26): 12/12 con el geométrico.
 
 ## Siguientes fases
 
