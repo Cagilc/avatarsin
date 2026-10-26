@@ -19,6 +19,8 @@ export { auditEntrySchema, type AuditEntry } from './schema/audit.ts';
 export { vexPersonalitySchema, vexThemeSchema, type VexPersonality, type VexTheme } from './schema/theme.ts';
 export {
   NO_GRANT,
+  approvalChannelSchema,
+  approvalsSchema,
   grantExpired,
   grantMatchesHost,
   grantSchema,
@@ -29,6 +31,7 @@ export {
   permittedTools,
   screenContextSchema,
   signedGrantSchema,
+  type ApprovalChannel,
   type Grant,
   type HostAvatar,
   type HostConnector,

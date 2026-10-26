@@ -54,6 +54,10 @@ const app = buildApp({
   tokens,
   demoLogin,
   rateLimit: { messages: Number(env['VEX_RATE_LIMIT'] ?? 20), windowMs: 60_000 },
+  confirmTimeoutMs: Number(env['VEX_CONFIRM_TIMEOUT_MS'] ?? 5 * 60_000),
+  // Approval links (channel approvals) point here and are signed with the token secret when there is one.
+  publicUrl: env['VEX_PUBLIC_URL'] ?? `http://127.0.0.1:${port}`,
+  ...(env['VEX_TOKEN_SECRET'] ? { approvalSecret: env['VEX_TOKEN_SECRET'] } : {}),
   // Model usage caps, on by default: tokens per person and day, USD per installation and month. 0 = no cap.
   spendLimits: {
     ...(env['VEX_LIMIT_USER_DAY_TOKENS'] !== undefined ? { userDayTokens: Number(env['VEX_LIMIT_USER_DAY_TOKENS']) } : {}),

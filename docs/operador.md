@@ -108,6 +108,15 @@ Lo que un host enseña a sus usuarios **sin modelo**: novedades y accesos rápid
 
 **En el panel.** `<vex-assistant>` pide anuncios y botones al conectar: los no vistos salen en una bandeja al principio de la conversación (texto plano, construido como nodos de texto: nunca HTML), con su acción (`cta`: un botón rápido o un enlace https) y «Entendido»; los botones van en una fila sobre el cuadro de texto. Un botón de prompt es `send(prompt)`; uno de herramienta, `runQuickAction(id)`. `presets/demo-negocio` trae tres botones y un anuncio de bienvenida. Pruebas: `apps/api/src/engage.test.ts` (por HTTP: rol, visto una vez, botón por el bucle con confirmación real, botón denegado, borradores) y el e2e de la página simple.
 
+## Aprobaciones por canal (backlog A)
+
+Lo irreversible sigue pidiendo confirmación con la vista previa real, pero la tarjeta ya no vive solo en la página. Con `features.channelApprovals` y `approvals.channels` en el manifiesto, cuando una petición se queda esperando el OK, Vex Core manda la tarjeta por cada canal:
+
+- `{"kind":"webhook","url":"https://…","secretEnv":"VEX_HOOK_SECRET"}`: un `POST` JSON (`type: approval_requested`, sesión, acción, principal, herramienta, riesgo, resumen, `details` de la vista previa, parámetros, `approveUrl`, `expiresAt`) con cabeceras `x-vex-event` y, si hay secreto, `x-vex-signature: sha256=<HMAC del cuerpo>`. El host lo convierte en correo, mensaje o lo que use, y decide **a quién** se lo manda: así se delega una aprobación. La URL pasa la política de salida.
+- `{"kind":"log"}`: la línea con el enlace en el registro del servidor (para probar en local).
+
+El enlace (`VEX_PUBLIC_URL/approve/<token>`) abre una página del propio Vex Core con la tarjeta y dos botones; el token es un HMAC ligado a esa confirmación, caduca con ella (`VEX_CONFIRM_TIMEOUT_MS`, 5 min por defecto: súbelo si las aprobaciones viajan) y vale una sola vez. Resolverlo desde el enlace o desde la página es lo mismo: el bucle sigue o se detiene y el flujo SSE lo cuenta. El panel recibe un `notice` («Te he avisado por webhook…»). Cada envío queda en la auditoría (`avisar_aprobacion`, con error si el canal falló); un canal caído nunca bloquea la tarjeta. Pruebas: `apps/api/src/approvals.test.ts`.
+
 ## Límites de gasto y pausa (decisión 4 del plan maestro)
 
 Cada cliente paga la IA con su clave, y Vex trae los frenos puestos de serie (`apps/api/src/spend.ts`):

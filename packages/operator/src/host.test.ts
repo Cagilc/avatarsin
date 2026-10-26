@@ -9,7 +9,7 @@ describe('host manifest', () => {
     const m = hostManifestSchema.parse(MINIMAL);
     expect(m.connectors).toEqual([]);
     expect(m.screenContext).toEqual({});
-    expect(m.features).toEqual({ tours: false, announcements: false, quickActions: false, domDriver: false });
+    expect(m.features).toEqual({ tours: false, announcements: false, quickActions: false, domDriver: false, channelApprovals: false });
     expect(m.policy).toBeUndefined();
     expect(m.avatar).toBeUndefined();
   });
@@ -46,6 +46,16 @@ describe('host manifest', () => {
     expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'x', title: 'T', steps: [{ target: 'a', say: 'A', pose: 'sleep' }] }] }).success).toBe(false);
     expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'x', title: 'T', steps: [] }] }).success).toBe(false);
     expect(hostManifestSchema.safeParse({ ...MINIMAL, tours: [{ id: 'dup', title: 'A', steps: [{ say: 'a' }] }, { id: 'dup', title: 'B', steps: [{ say: 'b' }] }] }).success).toBe(false);
+  });
+
+  it('accepts approval channels: a signed webhook or the server log, never a secret in the manifest', () => {
+    const m = hostManifestSchema.parse({ ...MINIMAL, features: { channelApprovals: true }, approvals: { channels: [{ kind: 'webhook', url: 'https://host.example/vex/aprobaciones', secretEnv: 'VEX_HOOK_SECRET' }, { kind: 'log' }] } });
+    expect(m.features.channelApprovals).toBe(true);
+    expect(m.approvals?.channels).toHaveLength(2);
+    expect(hostManifestSchema.parse(MINIMAL).features.channelApprovals).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, approvals: { channels: [] } }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, approvals: { channels: [{ kind: 'webhook', url: 'https://h.example', secret: 'abc' }] } }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, approvals: { channels: [{ kind: 'email', to: 'x@y' }] } }).success).toBe(false);
   });
 
   it('validates the domain and the avatar reference', () => {

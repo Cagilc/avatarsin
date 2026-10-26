@@ -60,8 +60,22 @@ export const hostFeaturesSchema = z.strictObject({
   announcements: z.boolean().default(false),
   quickActions: z.boolean().default(false),
   domDriver: z.boolean().default(false),
+  /** A pending confirmation is also sent out through `approvals.channels`, to be resolved from there. */
+  channelApprovals: z.boolean().default(false),
 });
 export type HostFeatures = z.infer<typeof hostFeaturesSchema>;
+
+/**
+ * Where a pending confirmation is delivered besides the page: a webhook the host turns into an
+ * e-mail or a message (signed with the secret named in `secretEnv`), or the server log. The host
+ * decides who gets the link: whoever opens it resolves the confirmation.
+ */
+export const approvalChannelSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('webhook'), url: z.string().url(), secretEnv: envNameSchema.optional() }),
+  z.strictObject({ kind: z.literal('log') }),
+]);
+export type ApprovalChannel = z.infer<typeof approvalChannelSchema>;
+export const approvalsSchema = z.strictObject({ channels: z.array(approvalChannelSchema).min(1).max(5) });
 
 /**
  * The avatar published by the studio for this integration. Looks and personality come signed from
@@ -94,6 +108,7 @@ export const hostManifestSchema = z
     policy: permissionPolicySchema.optional(),
     screenContext: screenContextSchema.default({}),
     features: hostFeaturesSchema.prefault({}),
+    approvals: approvalsSchema.optional(),
     /** Shown only with `features.tours`; the avatar points at registered elements, no model involved. */
     tours: z.array(tourSchema).max(20).default([]).refine(uniqueIds, 'ids de tour repetidos'),
     /** Shown only with `features.announcements`; presentation data, served to the page by Vex Core. */

@@ -135,7 +135,11 @@ Mejoras:
   - El caso sale de un turno del historial (petición y contexto de pantalla) y de la auditoría de sus acciones (llamadas en orden, rechazadas o denegadas, correos confirmados con destinatario, expedientes, tareas, citas, principal); nunca del texto de la respuesta.
   - Los casos exportados viven en `apps/api/evals/cases.local.json` (JSON validado, sin `setup`) y el banco los carga con los de `cases.ts`; llegan como `scripted: 'skip'` con una nota que pide revisarlos. Anonimización básica opcional: correos y teléfonos sustituidos por alias coherentes.
   - 👍/👎 con motivo por respuesta en el panel (`POST /operator/feedback`, solo sobre la propia sesión); `GET /admin/sessions` lista conversaciones con votos y motivos para elegir qué exportar; `pnpm eval:export -- --list | --session <id>`.
-  - Pendiente del paso 7 sin clave: «aprobaciones por canal».
+- **Hecho el 2026-10-26**, rama local `wf/07-aprobaciones`: **aprobaciones por canal** (backlog A de Oscar). Puertas: tipado OK, 237 pruebas (api 95, operator 45, format 22, runtime 12, connectors 16, server 32, assistant 15), banco 15/15, e2e 9/9 y 8/8, `salud.js` limpio. Decisiones:
+  - El manifiesto declara `approvals.channels` (webhook firmado con el secreto que nombra `secretEnv`, o registro del servidor) y el interruptor `features.channelApprovals`. No hay canal de correo propio: el webhook es el canal genérico y el host lo convierte en lo que use; delegar = mandar el enlace a otra persona.
+  - El enlace lleva un token HMAC ligado a una confirmación (sesión, acción, principal), caduca con ella y vale una vez; la página la sirve Vex Core (mismo origen, formulario sin scripts) y enseña la vista previa real. `VEX_PUBLIC_URL` y `VEX_CONFIRM_TIMEOUT_MS` nuevos; Fastify con `maxParamLength` 512 para el token.
+  - Un canal que falla no bloquea la tarjeta; cada envío va a la auditoría; el panel recibe un `notice`.
+  - Paso 7 sin clave: completo (límites, casos desde sesión, aprobaciones por canal). Queda lo que necesita Claude o herramientas externas: analítica de onboarding, «¿cómo hago X?», generación de avatares y piezas desde imagen.
 
 ### Cuándo están pulidas las bases
 Un avatar del estudio opera en la demo con su personalidad y sus permisos; el banco con Claude supera el mínimo; la documentación cuenta lo que hay. Entonces se deciden repositorio y licencia y se publica.

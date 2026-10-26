@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from 'zod';
 import { authSchema } from '@vex/connectors';
 import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
+import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage } from './approvals.ts';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { caseFromSession } from './cases.ts';
 import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
@@ -41,8 +42,12 @@ export interface AppOptions {
   spendLimits?: Partial<SpendLimits>;
   /** What runs when a cap is reached or the AI is paused. Default: the scripted planner. */
   fallbackProvider?: ModelProvider;
-  /** Clock for the spend meter (tests). */
+  /** Clock for the spend meter and the approval links (tests). */
   now?: () => number;
+  /** Where the approval links point (this server as the outside sees it). Default: http://127.0.0.1:8787. */
+  publicUrl?: string;
+  /** Signs the approval links. Default: a random secret that dies with the process (pending confirmations do too). */
+  approvalSecret?: string;
   /**
    * Pages allowed to call Vex Core from a browser, as exact origins (scheme://host:port).
    * Any other origin gets no CORS headers and a 403 on state-changing requests. Empty = browsers blocked.
@@ -144,7 +149,8 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** Vex Core as a Fastify app. `buildApp` is what tests use; `server.ts` listens. */
 export function buildApp(opts: AppOptions): FastifyInstance {
-  const app = Fastify({ logger: opts.logger ?? false });
+  // maxParamLength: approval links carry a signed token (~220 characters) in the path.
+  const app = Fastify({ logger: opts.logger ?? false, maxParamLength: 512 });
   const store = opts.store ?? new MemoryStore();
   const manifest = opts.manifest;
   const policy = opts.policy ?? manifest?.policy ?? OPERATOR_POLICY;
@@ -199,6 +205,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   /** Connectors the manifest proposed at start and what became of each. */
   const proposals: Array<{ id: string; status: 'proposed' | 'existing' | 'failed'; error?: string }> = [];
   const meter = new SpendMeter(store, opts.spendLimits ?? {}, opts.now);
+  const publicUrl = (opts.publicUrl ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
+  const approvalTokens = new ApprovalTokens(opts.approvalSecret, opts.now);
+  const notifier =
+    manifest?.features.channelApprovals && manifest.approvals
+      ? new ApprovalNotifier({ channels: manifest.approvals.channels, env: opts.connectors?.env ?? process.env, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}), log: (line) => app.log.info(line) })
+      : null;
   const fallback = opts.fallbackProvider ?? new ScriptedProvider();
   const pauseMode = (): PauseMode => {
     const v = store.getSetting('pause');
@@ -211,12 +223,14 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return principal;
   };
 
-  // Browsers only from the listed pages; CORS never reflects an arbitrary origin.
+  // Browsers only from the listed pages; CORS never reflects an arbitrary origin. The approval
+  // page is served by this server itself, so its own forms pass as same-origin.
   void app.register(cors, { origin: allowedOrigins, exposedHeaders: ['x-vex-session'] });
+  const selfOrigin = (req: FastifyRequest) => `${req.protocol}://${req.headers.host ?? ''}`;
   app.addHook('onRequest', async (req, reply) => {
-    if (STATE_CHANGING.has(req.method) && !originAllowed(req.headers.origin, allowedOrigins)) {
-      await reply.code(403).send({ error: 'Origen no permitido.' });
-    }
+    if (!STATE_CHANGING.has(req.method) || originAllowed(req.headers.origin, allowedOrigins)) return;
+    if (req.url.startsWith('/approve/') && req.headers.origin === selfOrigin(req)) return;
+    await reply.code(403).send({ error: 'Origen no permitido.' });
   });
   app.addHook('onClose', async () => {
     await registry.close();
@@ -355,7 +369,22 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         userMessage: run.userMessage,
         system: await currentSystem(),
         emit: send,
-        confirm: (action) => sessions.waitForConfirmation(session, action, confirmTimeoutMs),
+        confirm: (action) => {
+          const wait = sessions.waitForConfirmation(session, action, confirmTimeoutMs);
+          if (notifier) {
+            // The card also goes out through the host's channels; a failed delivery never blocks the card itself.
+            const token = approvalTokens.issue({ sessionId: session.id, actionId: action.id, principalId: principal.id }, confirmTimeoutMs);
+            const expiresAt = new Date((opts.now ?? Date.now)() + confirmTimeoutMs).toISOString();
+            void notifier.notify({ sessionId: session.id, principal, action, approveUrl: `${publicUrl}/approve/${token}`, expiresAt }).then((results) => {
+              for (const r of results) {
+                store.recordAudit({ ts: new Date().toISOString(), sessionId: session.id, principal, actionId: crypto.randomUUID(), tool: 'avisar_aprobacion', driver: 'platform', risk: 'read', params: { canal: r.kind, accion: action.id }, summary: `Aviso de aprobación por ${r.kind}: ${action.summary}`, outcome: r.ok ? 'ok' : 'error', ...(r.error ? { error: r.error } : {}), durationMs: 0 });
+              }
+              const delivered = results.filter((r) => r.ok).map((r) => (r.kind === 'log' ? 'el registro del servidor' : r.kind));
+              if (delivered.length) send({ type: 'notice', message: `Te he avisado por ${delivered.join(' y ')} por si prefieres aprobarlo desde allí.` });
+            });
+          }
+          return wait;
+        },
         audit: (entry) => store.recordAudit(entry),
         signal: controller.signal,
         ...(opts.maxToolCalls ? { maxToolCalls: opts.maxToolCalls } : {}),
@@ -483,6 +512,35 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     }
     return streamRun(req, reply, principal, body.data, { userMessage: `Botón: ${action.label}`, provider: new DirectProvider({ tool, params: action.params ?? {}, label: action.label }), ai: false });
   });
+
+  // --- Approval links: the card outside the page. The token is the credential: short-lived, bound to one confirmation, single-use. ---
+  const pendingFor = (token: string) => {
+    const claim = approvalTokens.verify(token);
+    if (!claim) return { kind: 'invalid' as const };
+    const session = sessions.get(claim.sessionId);
+    const pending = session?.pending.get(claim.actionId);
+    if (!session || !pending || session.principal.id !== claim.principalId) return { kind: 'gone' as const };
+    return { kind: 'pending' as const, session, pending };
+  };
+  const html = (reply: FastifyReply, code: number, body: string) => reply.code(code).header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-store').header('x-robots-tag', 'noindex').send(body);
+
+  app.get('/approve/:token', async (req, reply) => {
+    const token = (req.params as { token: string }).token;
+    const found = pendingFor(token);
+    if (found.kind === 'invalid') return html(reply, 400, resultPage('invalid'));
+    if (found.kind === 'gone') return html(reply, 410, resultPage('gone'));
+    return html(reply, 200, approvalPage(found.pending.action, found.session.principal, `${publicUrl}/approve/${token}`));
+  });
+
+  for (const decision of ['approve', 'reject'] as const) {
+    app.post(`/approve/:token/${decision}`, async (req, reply) => {
+      const found = pendingFor((req.params as { token: string }).token);
+      if (found.kind === 'invalid') return html(reply, 400, resultPage('invalid'));
+      if (found.kind === 'gone') return html(reply, 410, resultPage('gone'));
+      sessions.confirm(found.session.id, found.pending.action.id, decision === 'approve');
+      return html(reply, 200, resultPage(decision === 'approve' ? 'approved' : 'rejected'));
+    });
+  }
 
   app.post('/operator/confirm', async (req, reply) => {
     const principal = principalOf(req, reply);

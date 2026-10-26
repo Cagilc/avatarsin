@@ -54,7 +54,7 @@ describe('loading the host manifest', () => {
   it('loads the demo preset: the demo platform by name, announcements and buttons on, nothing proposed', () => {
     const m = loadHostManifest('demo-negocio');
     expect(m.host).toEqual({ name: 'Demo Negocio', domain: 'demo-negocio.example' });
-    expect(m.features).toEqual({ tours: false, announcements: true, quickActions: true, domDriver: false });
+    expect(m.features).toEqual({ tours: false, announcements: true, quickActions: true, domDriver: false, channelApprovals: false });
     expect(m.quickActions.map((q) => q.id)).toEqual(['buscar-laura', 'quien-es-marco', 'campana-octubre']);
     expect(m.announcements.map((a) => a.id)).toEqual(['bienvenida']);
     expect(m.connectors).toEqual([]);
@@ -151,8 +151,8 @@ describe('Vex Core with a host manifest', () => {
     const demo = await info();
     expect(demo.tools).toEqual(bare.tools);
     expect(demo.policy).toEqual(bare.policy);
-    expect(demo.host).toEqual({ name: 'Demo Negocio', manifest: true, domain: 'demo-negocio.example', features: { tours: false, announcements: true, quickActions: true, domDriver: false }, proposals: [] });
-    await start({ manifest: { ...loadHostManifest('demo-negocio'), features: { tours: false, announcements: false, quickActions: false, domDriver: false } } });
+    expect(demo.host).toEqual({ name: 'Demo Negocio', manifest: true, domain: 'demo-negocio.example', features: { tours: false, announcements: true, quickActions: true, domDriver: false, channelApprovals: false }, proposals: [] });
+    await start({ manifest: { ...loadHostManifest('demo-negocio'), features: { tours: false, announcements: false, quickActions: false, domDriver: false, channelApprovals: false } } });
     const off = await info();
     expect(off.tools).toEqual(bare.tools);
     expect(off.policy).toEqual(bare.policy);
