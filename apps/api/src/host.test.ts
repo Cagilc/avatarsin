@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ScriptedProvider, type Completion, type CompletionRequest, type HostAvatar, type HostManifest, type ModelProvider, type OperatorEvent } from '@vex/operator';
 import { createCitasApp } from '@vex/sample-tools';
@@ -48,7 +48,9 @@ interface Info {
 describe('loading the host manifest', () => {
   it('resolves a preset name to presets/<name>/manifest.json and a path to itself', () => {
     expect(slash(resolveManifestPath('demo-negocio'))).toMatch(/\/presets\/demo-negocio\/manifest\.json$/);
-    expect(slash(resolveManifestPath('./hosts/mio.json', { cwd: 'C:/vex/apps/api' }))).toBe('C:/vex/apps/api/hosts/mio.json');
+    // An absolute cwd of this platform: a Windows drive path is relative on Linux.
+    const cwd = resolve(tmpdir(), 'vex-api');
+    expect(resolveManifestPath('./hosts/mio.json', { cwd })).toBe(join(cwd, 'hosts', 'mio.json'));
   });
 
   it('loads the demo preset: the demo platform by name, announcements and buttons on, nothing proposed', () => {
