@@ -23,7 +23,7 @@ Un **producto propio** de César Augusto Gil (GitHub `Cagilc`): un avatar animad
 - **#2 `docs/plan-host-agnostico` (6e856e3)**: plan solo en documentos para hacer Vex agnóstico del host con un **manifiesto** y 5 workflows (01 desacople y manifiesto, 02 SDK y web component, 03 tours, 04 anuncios y botones, 05 driver DOM con defensa de inyección), protocolo Fable revisa / Sonnet escribe, `DECISIONES.md`, `backlog.md` (11 ideas). Oscar se reserva el «carril de infra» (servidor, multi-inquilino, host real). Análisis y mejoras en la sección 3.
 
 ### Decisiones ya tomadas por César
-- No subir **nada** a GitHub (ni avatarsin ni el estudio ni `vex`) hasta pulir las bases y que el conjunto tenga sentido. Commits locales sí.
+- ~~No subir **nada** a GitHub hasta pulir las bases.~~ **Cambiado el 2026-10-26**: César pidió subir `vex` a su GitHub para que Oscar vea el avance y siga trabajando desde allí, y eligió `Cagilc/avatarsin` (público) como destino: `main` de `vex` sustituye al de `avatarsin` por fast-forward, sin reescribir la historia. Con ello el estudio pasa a ser público y Oscar lo ve (sustituye la decisión 5). Sigue vigente: nada más en GitHub (merge, revisiones, comentarios) sin aprobación expresa.
 - Vex es genérico: ningún nombre de plataforma concreta en el código.
 - El estudio es privado; la integración en un SaaS es el destino de los avatares, no del estudio.
 - Probar la fusión en `Desktop\vex` sin perder la opción de volver a los dos repositorios.
@@ -33,12 +33,12 @@ Un **producto propio** de César Augusto Gil (GitHub `Cagilc`): un avatar animad
 2. **El operador se instala en cada cliente** (ni servicio central ni mixto). Cada instalación es de **un solo inquilino**, con su manifiesto. Desaparece el multi-inquilino del carril de infra de Oscar. Quedan en ese carril el contenedor instalable, `TokenService.verify` contra el JWT del host, la parada global y los límites de gasto.
 3. **Una sola etiqueta**: `<vex-assistant>` envuelve el chat, la tarjeta de confirmación y el `<vex-avatar>` del estudio. `<vex-avatar>` sigue disponible por separado y el asistente admite un modo sin avatar.
 4. **La IA la paga cada cliente con su clave** (en su `.env`). Vex trae límites configurables y activos por defecto: tope de tokens por usuario y día, tope mensual de la instalación, parada global y aviso al 80 %. Si se agota el tope o no hay clave, pasa a modo guion y lo dice. El asistente del estudio lo paga César.
-5. **Oscar sigue en `avatarsin`** (público). No se le da acceso al estudio ni a `vex` por ahora. A la PR #2 se responde con la **versión corta** del borrador, la que no menciona el estudio.
+5. **Oscar sigue en `avatarsin`** (público). ~~No se le da acceso al estudio ni a `vex` por ahora.~~ Desde el 2026-10-26 `avatarsin` recibe el `main` de `vex`, estudio incluido; la respuesta a la PR #2 puede ser ya la versión larga.
 6. **Se queda la fusión**: `Desktop\vex` es el repositorio de trabajo. `avatarsin` se añade como remoto de solo lectura y lo que César acepte allí se fusiona en `vex` (las rutas del operador coinciden). Al publicar, `vex` puede sustituir a `avatarsin` sin reescribir la historia. Riesgo: choques si Oscar toca los ficheros que cambia el paso 1 (`apps/api`, `packages/operator`). Conviene avisarle de qué zonas están en obras.
 
 ### Decisiones pendientes de César
 7. Proveedor de imágenes para avatares realistas.
-8. Proteger `main` en `Cagilc/avatarsin`: PR obligatoria con su aprobación y CI en verde. Es un ajuste de su cuenta y lo hace él; recomendado antes de publicar las respuestas a Oscar.
+8. Proteger `main` en `Cagilc/avatarsin`: PR obligatoria con su aprobación y CI en verde. Es un ajuste de su cuenta y lo hace él. **Urgente ahora**: con `vex` subido y sin protección, Oscar (escritura) puede empujar directamente a `main`.
 9. Publicar las respuestas a Oscar (`docs/borradores/`).
 
 ## 2 · Entorno y reglas de trabajo
