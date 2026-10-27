@@ -54,11 +54,21 @@ export const reviewSchema = z.object({
  * from the write's response (`$.id`), from the write's input (`$input.id`) or written literally.
  * The importer suggests one when the paths make it obvious; the review can change or clear it.
  */
+/**
+ * What the read-back must show: the item exists (default), it is gone (404, after a hard delete),
+ * or a field has a value (`{ path, equals }`: a soft cancel that sets `estado: cancelada`). `equals`
+ * is a literal, or `$input.x` / `$.x` taken from the write's input or response.
+ */
+export const verifyExpectSchema = z.union([
+  z.enum(['exists', 'missing']),
+  z.strictObject({ path: z.string().min(1).max(200), equals: z.union([z.string().max(500), z.number(), z.boolean(), z.null()]) }),
+]);
+export type VerifyExpect = z.infer<typeof verifyExpectSchema>;
+
 export const verifySchema = z.object({
   tool: toolNameSchema,
   params: z.record(z.string(), z.string()).default({}),
-  /** What confirms the effect: the read finds it (default) or says it is gone (after a delete). */
-  expect: z.enum(['exists', 'missing']).default('exists'),
+  expect: verifyExpectSchema.default('exists'),
   /** Registered page element (data-vex-id) the avatar points at when the effect shows. */
   target: z.string().min(1).max(80).optional(),
 });

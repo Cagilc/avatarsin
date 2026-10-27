@@ -15,7 +15,7 @@ export interface ConnectorToolView {
   enabled: boolean;
   review: { by: string; at: string; lowerRiskReason?: string } | null;
   /** How the effect is read back afterwards, when the importer or the review set one. */
-  verify?: { tool: string; params: Record<string, string>; expect: 'exists' | 'missing'; target?: string } | null;
+  verify?: { tool: string; params: Record<string, string>; expect: 'exists' | 'missing' | { path: string; equals: string | number | boolean | null }; target?: string } | null;
 }
 
 export interface ConnectorView {

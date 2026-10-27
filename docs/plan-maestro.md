@@ -216,6 +216,7 @@ Mejoras:
 
 **Plan a ejecutar** (intercalando el paso 4 en cuanto haya clave):
 - **9.1 L1.3 verificación con valor esperado** — media jornada; cierra el hallazgo.
+  - **Hecho el 2026-10-27**, rama local `wf/09-esperado`. Puertas: tipado OK, 324 pruebas (api 152, operator 50, connectors 24, format 22, runtime 12, server 48, assistant 16), banco 15/15, banco del estudio 12/12, demo compilada, e2e 9/9 y 9/9, `salud.js` limpio. Decisiones: `expect` admite `{ path, equals }` además de `exists | missing` (`verifyExpectSchema`); `equals` es literal, `$input.x` o `$.x`; `verifyConfirms` compara primitivos por valor (`5` y `"5"` son lo mismo), `null` solo con `null`, y nunca da por bueno un objeto ni una ruta ausente. El importador **no** lo sugiere (no sabe qué valor dejará una escritura): lo fija la revisión; la demo lo muestra en la fila. La agenda de muestra comprueba «cancelada» con «Comprobado» en el test con el servidor real.
 - **9.2 L1.2 `auth.kind: 'session'`** — `credential` en `ToolContext` solo con JWT del host; tests de cabecera presente, ausente al cambiar de origen, ausente de auditoría/registro/chat/vista previa, y token caducado; fila en `docs/seguridad.md`.
 - **9.3 L1.1 contenedor** — `Dockerfile` multietapa, `compose.yaml`, copia y restauración del SQLite, CI que construye y comprueba `/health`; Oscar lo valida en Linux.
 - **9.4 L1.5 tres hosts de muestra** — catálogo y CRM, presets, casos por host y mixtos, informe por host, `--min-pass` por categoría.

@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { defineTool, type AnyTool, type Risk } from '@vex/operator';
+import { defineTool, type AnyTool, type Risk, type VerifyRead } from '@vex/operator';
 import { validateJson } from './jsonSchema.ts';
-import type { ConnectorManifest, ConnectorTool } from './manifest.ts';
+import type { ConnectorManifest, ConnectorTool, VerifyExpect } from './manifest.ts';
 import { contentToText, type McpClient } from './mcp/client.ts';
 import { liveTools } from './review.ts';
 
@@ -61,16 +61,35 @@ function authHeaders(manifest: ConnectorManifest, env: RuntimeDeps['env']): Reco
   return a.kind === 'bearer' ? { authorization: `Bearer ${secret}` } : { [a.name]: secret };
 }
 
+const dig = (root: unknown, path: string): unknown => path.split('.').filter(Boolean).reduce<unknown>((v, key) => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>)[key] : undefined), root);
+
 /** `$.a.b` reads the write's response, `$input.a` its input, anything else is literal. */
+function resolveExpr(expr: unknown, input: unknown, output: unknown): unknown {
+  if (typeof expr !== 'string') return expr;
+  return expr.startsWith('$input.') ? dig(input, expr.slice(7)) : expr.startsWith('$.') ? dig(output, expr.slice(2)) : expr;
+}
+
 export function resolveVerifyParams(spec: Record<string, string>, input: unknown, output: unknown): Record<string, unknown> | null {
-  const dig = (root: unknown, path: string): unknown => path.split('.').filter(Boolean).reduce<unknown>((v, key) => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>)[key] : undefined), root);
   const params: Record<string, unknown> = {};
   for (const [name, expr] of Object.entries(spec)) {
-    const value = expr.startsWith('$input.') ? dig(input, expr.slice(7)) : expr.startsWith('$.') ? dig(output, expr.slice(2)) : expr;
+    const value = resolveExpr(expr, input, output);
     if (value === undefined || value === null) return null;
     params[name] = value;
   }
   return params;
+}
+
+/** Does the read-back show what the verification expects? Exported for the bank and the tests. */
+export function verifyConfirms(expect: VerifyExpect, read: VerifyRead, input: unknown, output: unknown): boolean {
+  if (expect === 'missing') return !read.ok && /respondió 404\b/.test(read.error);
+  if (expect === 'exists') return read.ok;
+  if (!read.ok) return false;
+  const actual = dig(read.data, expect.path);
+  const wanted = resolveExpr(expect.equals, input, output);
+  // Primitives only: a JSON number and the "5" a form sent are the same value; an object never matches.
+  if (actual === null || wanted === null) return actual === wanted;
+  if (typeof actual === 'object' || typeof wanted === 'object' || actual === undefined || wanted === undefined) return false;
+  return String(actual) === String(wanted);
 }
 
 function verification(tool: ConnectorTool): AnyTool['verify'] | undefined {
@@ -79,8 +98,7 @@ function verification(tool: ConnectorTool): AnyTool['verify'] | undefined {
   return {
     tool: v.tool,
     params: (input, output) => resolveVerifyParams(v.params, input, output),
-    // A delete is confirmed when the read-back says the item is gone.
-    confirms: (read) => (v.expect === 'missing' ? !read.ok && /respondió 404\b/.test(read.error) : read.ok),
+    confirms: (read, input, output) => verifyConfirms(v.expect, read, input, output),
     ...(v.target ? { target: () => v.target } : {}),
   };
 }

@@ -8,8 +8,8 @@ import { StdioMcpClient } from './mcp/client.ts';
 import { refreshConnector, reviewConnector, liveTools, ReviewError, type ToolDecision } from './review.ts';
 import { suggestHttpRisk, suggestMcpRisk } from './risk.ts';
 import { resolveRefs, validateJson } from './jsonSchema.ts';
-import { resolveVerifyParams, toolsFromManifest } from './runtime.ts';
-import type { ConnectorManifest } from './manifest.ts';
+import { resolveVerifyParams, toolsFromManifest, verifyConfirms } from './runtime.ts';
+import { verifySchema, type ConnectorManifest } from './manifest.ts';
 
 const NOW = new Date('2026-10-24T10:00:00.000Z');
 
@@ -251,7 +251,7 @@ describe('runtime against the appointments API', () => {
     expect(resolveVerifyParams({ id: '$.nope' }, input, cita)).toBeNull();
 
     // A delete expects the read-back to say 404. This API keeps a cancelled booking (estado: cancelada),
-    // so the suggestion reports "could not check" here, honestly; the review can change the expectation.
+    // so the suggestion reports "could not check" here, honestly; the review changes the expectation.
     const cancelar = t('citas_cancelar_cita');
     expect(cancelar.verify).toMatchObject({ tool: 'citas_obtener_cita', params: expect.any(Function) });
     expect(cancelar.verify!.params({ id: cita.id }, undefined)).toEqual({ id: cita.id });
@@ -261,6 +261,30 @@ describe('runtime against the appointments API', () => {
     const after = { ok: true as const, data: await t('citas_obtener_cita').execute({ id: cita.id }, ctx) };
     expect(after.data).toMatchObject({ estado: 'cancelada' });
     expect(cancelar.verify!.confirms!(after, { id: cita.id }, undefined)).toBe(false);
+
+    // The review says what a soft cancel must show: a field with a value. Now the same read-back confirms.
+    const draft = importOpenApi(citasOpenApi(base), { id: 'citas', auth: { kind: 'bearer', env: 'CITAS_TOKEN' } });
+    const reviewed = reviewConnector(approveAll(draft), [{ name: 'citas_cancelar_cita', risk: 'irreversible', enabled: true, verify: { tool: 'citas_obtener_cita', params: { id: '$input.id' }, expect: { path: 'estado', equals: 'cancelada' } } }], 'u-cesar', NOW);
+    const soft = toolsFromManifest(reviewed, { env: { CITAS_TOKEN: TOKEN } }).find((x) => x.name === 'citas_cancelar_cita')!;
+    expect(soft.verify!.confirms!(after, { id: cita.id }, undefined)).toBe(true);
+    expect(soft.verify!.confirms!({ ok: true, data: { estado: 'confirmada' } }, { id: cita.id }, undefined)).toBe(false);
+    expect(soft.verify!.confirms!({ ok: false, error: 'Agenda de citas respondió 404: no existe' }, { id: cita.id }, undefined)).toBe(false);
+  });
+
+  it('a value expectation compares primitives by value, takes $input / $ references, and never matches an object', () => {
+    const read = (data: unknown) => ({ ok: true as const, data });
+    expect(verifyConfirms({ path: 'estado', equals: 'cancelada' }, read({ estado: 'cancelada' }), {}, {})).toBe(true);
+    expect(verifyConfirms({ path: 'total', equals: 5 }, read({ total: '5' }), {}, {})).toBe(true);
+    expect(verifyConfirms({ path: 'pagado', equals: true }, read({ pagado: true }), {}, {})).toBe(true);
+    expect(verifyConfirms({ path: 'borrado', equals: null }, read({ borrado: null }), {}, {})).toBe(true);
+    expect(verifyConfirms({ path: 'cliente.email', equals: '$input.body.email' }, read({ cliente: { email: 'pau@ejemplo.es' } }), { body: { email: 'pau@ejemplo.es' } }, {})).toBe(true);
+    expect(verifyConfirms({ path: 'id', equals: '$.id' }, read({ id: 'C-9' }), {}, { id: 'C-9' })).toBe(true);
+    expect(verifyConfirms({ path: 'estado', equals: 'cancelada' }, read({ estado: { valor: 'cancelada' } }), {}, {})).toBe(false);
+    expect(verifyConfirms({ path: 'no.existe', equals: 'x' }, read({}), {}, {})).toBe(false);
+    expect(verifyConfirms({ path: 'estado', equals: '$input.nada' }, read({ estado: 'x' }), {}, {})).toBe(false);
+    expect(verifySchema.safeParse({ tool: 'citas_obtener_cita', expect: { path: 'estado' } }).success).toBe(false);
+    expect(verifySchema.safeParse({ tool: 'citas_obtener_cita', expect: { path: 'estado', equals: { valor: 1 } } }).success).toBe(false);
+    expect(verifySchema.parse({ tool: 'citas_obtener_cita' }).expect).toBe('exists');
   });
 
   it('books, previews and sends a reminder against the live service', async () => {

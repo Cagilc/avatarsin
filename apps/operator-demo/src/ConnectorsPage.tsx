@@ -139,7 +139,12 @@ function ConnectorCard({ connector, token, onChange }: { connector: ConnectorVie
                 <td>
                   <span className={`risk risk-${t.suggestedRisk}`}>{RISK_LABEL[t.suggestedRisk]}</span>
                   <span className="muted conn-reason">{t.riskReason}</span>
-                  {t.verify && <span className="muted conn-reason">Comprueba con {t.verify.tool}{t.verify.expect === 'missing' ? ' (espera que ya no exista)' : ''}</span>}
+                  {t.verify && (
+                    <span className="muted conn-reason">
+                      Comprueba con {t.verify.tool}
+                      {t.verify.expect === 'missing' ? ' (espera que ya no exista)' : typeof t.verify.expect === 'object' ? ` (espera ${t.verify.expect.path} = ${JSON.stringify(t.verify.expect.equals)})` : ''}
+                    </span>
+                  )}
                 </td>
                 <td>
                   <label className="visually-hidden" htmlFor={`risk-${t.name}`}>
