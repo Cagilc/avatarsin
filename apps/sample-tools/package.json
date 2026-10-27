@@ -14,7 +14,8 @@
     "notas": "node src/notas-mcp.ts",
     "typecheck": "tsc -p tsconfig.json",
     "catalogo": "node src/catalogo-server.ts",
-    "crm": "node src/crm-server.ts"
+    "crm": "node src/crm-server.ts",
+    "host-demo": "node src/host-demo-server.ts"
   },
   "dependencies": {
     "fastify": "^5.12.7"

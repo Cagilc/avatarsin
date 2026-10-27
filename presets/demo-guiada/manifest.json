@@ -1,0 +1,52 @@
+{
+  "format": "vex-host",
+  "version": 1,
+  "host": { "name": "Demo Negocio", "domain": "localhost" },
+  "screenContext": {
+    "pantalla": { "description": "Vista que el usuario tiene abierta: inicio, contacto, expediente, tareas o correos." },
+    "contactoId": { "description": "Id del contacto abierto, p. ej. c-002." },
+    "contactoEmail": { "description": "Correo del contacto abierto." },
+    "expedienteId": { "description": "Referencia del expediente abierto, p. ej. EXP-2026-041." }
+  },
+  "policy": { "allow": ["platform:*", "api:*", "mcp:*"], "deny": [], "confirm": ["irreversible"] },
+  "features": { "tours": true, "announcements": true, "quickActions": true, "presenter": true },
+  "quickActions": [
+    { "id": "buscar-laura", "label": "Buscar a Laura", "icon": "🔎", "tool": "buscar", "params": { "consulta": "Laura Pérez", "tipo": "contactos" } },
+    { "id": "abrir-expediente", "label": "Abrir expediente a Laura", "icon": "📁", "tool": "crear_expediente", "params": { "contactoId": "c-001", "tipo": "residencia", "notas": "Demo: renovación de residencia" } },
+    { "id": "quien-es-marco", "label": "¿Quién es Marco?", "prompt": "¿Quién es Marco Rossi?" }
+  ],
+  "announcements": [
+    {
+      "id": "bienvenida",
+      "title": "Vex ya opera aquí",
+      "body": "Pídeme cosas con tus propias palabras: busco contactos, abro expedientes, creo tareas y redacto correos. Lo irreversible te lo enseño antes de hacerlo.",
+      "cta": { "kind": "quickAction", "id": "buscar-laura" }
+    }
+  ],
+  "tours": [
+    {
+      "id": "primera-vez",
+      "title": "Qué hace Vex aquí",
+      "when": "first",
+      "steps": [
+        { "target": "titulo", "say": "Esta es la plataforma de siempre. Yo soy Vex: pídeme cosas con tus palabras.", "pose": "wave" },
+        { "target": "expedientes", "say": "Cuando abra un expediente, lo verás aparecer aquí: compruebo lo que hago y la página se entera." },
+        { "say": "Lo irreversible, como enviar un correo, te lo enseño antes y esperas tu OK.", "pose": "attention" }
+      ]
+    }
+  ],
+  "scripts": [
+    {
+      "id": "demo-cliente",
+      "title": "Demo para un cliente",
+      "scenes": [
+        { "target": "titulo", "say": "Esta es la plataforma del cliente, sin cambios: Vex entra con dos líneas.", "pose": "point", "notes": "Saludar. Enseñar que la web es la de siempre." },
+        { "say": "Vex busca a una persona con palabras normales, no con menús.", "action": "buscar-laura", "pose": "talk", "notes": "Enter lanza la búsqueda por el mismo bucle que un mensaje." },
+        { "target": "expedientes", "say": "Abre un expediente y lo comprueba leyéndolo de vuelta: la página lo ve aparecer.", "action": "abrir-expediente", "pose": "point", "notes": "Enter abre el expediente; señalar la lista cuando aparezca." },
+        { "say": "Cada acción queda en la auditoría con quién y cuándo; lo irreversible pide un OK con lo real.", "pose": "attention", "notes": "Si preguntan por seguridad: docs/seguridad.md." },
+        { "target": "pizarra", "say": "Y al terminar, el presentador deja la demo como estaba con un botón: el reinicio va firmado.", "pose": "celebrate", "notes": "Pulsar «Reiniciar demo» (solo administradores) y mostrar la pizarra vacía." }
+      ]
+    }
+  ],
+  "presenter": { "reset": { "url": "http://127.0.0.1:8793/vex/reset", "secretEnv": "DEMO_RESET_SECRET" } }
+}

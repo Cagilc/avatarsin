@@ -152,6 +152,7 @@ Una demo en directo con IA libre es frágil; un **guion** la hace repetible. En 
 - **Teclas**: `→` siguiente, `←` anterior (vuelve a la escena anterior que esté en la página), `Enter` lanza la acción de la escena por el mismo bucle que el botón (política, confirmación, auditoría), `Esc` sale. Las escenas cuyo `target` no está en la página se saltan, como en los tours. Un guion no deja rastro en el servidor: se ensaya las veces que haga falta.
 - **Reiniciar la demo**: `presenter.reset { url, secretEnv }` en el manifiesto. `POST /engage/presenter/reset` (solo `admin`, botón «Reiniciar demo» de la barra) manda al host un `POST` JSON `{ type: presenter_reset, host, principal, at }` por la guardia de salida, con `x-vex-event` y `x-vex-signature` (HMAC con el secreto que nombra `secretEnv`; sin él en el entorno, 500 antes que llamar sin firma). El host decide qué es «reiniciar». Queda en la auditoría como `reiniciar_demo`.
 - **Eventos** `vex-script`: `start`, `step` (con `index` y `target`), `action`, `reset`, `done` o `left`.
+- **Paquete de demo**: el preset `presets/demo-guiada` (tour de primera visita, tres botones, un guion de cinco escenas y el gancho de reinicio) y la web de muestra `apps/sample-tools/src/host-demo.ts` (`pnpm dev:host-demo`, puerto 8793), que registra elementos, refresca su lista de expedientes con `vex-effect` y **verifica la firma** del reinicio con `verifyVexSignature` (la función que un host copia). Guía paso a paso: `docs/vex-en-30-minutos.md`.
 
 ## Probar el avatar a mano
 

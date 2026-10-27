@@ -12,6 +12,7 @@
     "dev:citas": "pnpm --filter @vex/sample-tools citas",
     "dev:catalogo": "pnpm --filter @vex/sample-tools catalogo",
     "dev:crm": "pnpm --filter @vex/sample-tools crm",
+    "dev:host-demo": "pnpm --filter @vex/sample-tools host-demo",
     "dev:studio-server": "pnpm --filter @vexstudio/server dev",
     "dev:studio": "pnpm --filter @vexstudio/studio dev",
     "build": "pnpm -r build",
