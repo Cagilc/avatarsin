@@ -13,8 +13,10 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 # What Vex Core serves to the host's page: <vex-assistant> (which carries <vex-avatar>).
 RUN pnpm --filter @vexstudio/runtime build && pnpm --filter @vex/assistant build
-# Drop the dev tooling (vite, vitest, playwright…); the TypeScript sources run as they are on Node 24.
-RUN pnpm prune --prod
+# Drop the dev tooling (vite, vitest, playwright…): a fresh production-only install from the store
+# that the first install filled. (`pnpm prune --prod` is not reliable across a workspace: it dropped
+# runtime dependencies of apps/api.) The TypeScript sources run as they are on Node 24.
+RUN rm -rf node_modules && pnpm -r exec rm -rf node_modules && pnpm install --prod --frozen-lockfile --offline
 
 FROM node:24-alpine
 ENV NODE_ENV=production \
