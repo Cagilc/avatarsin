@@ -19,6 +19,11 @@ export const authSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('none') }),
   z.object({ kind: z.literal('bearer'), env: z.string().regex(/^[A-Z][A-Z0-9_]*$/) }),
   z.object({ kind: z.literal('header'), name: z.string().min(1), env: z.string().regex(/^[A-Z][A-Z0-9_]*$/) }),
+  /**
+   * The person's own session token (the host's JWT, verified by the manifest's `identity`) goes as
+   * the bearer: the host's API applies that person's permissions, not a service account's.
+   */
+  z.object({ kind: z.literal('session') }),
 ]);
 export type ConnectorAuth = z.infer<typeof authSchema>;
 

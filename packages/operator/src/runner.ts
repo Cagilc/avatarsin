@@ -23,6 +23,8 @@ export interface RunOptions {
   audit: (entry: AuditEntry) => void;
   /** Aborting stops the loop at the next safe point: the model call, a pending confirmation or between tools. */
   signal?: AbortSignal;
+  /** The person's own host credential for connectors that act as them (`ToolContext.credential`). */
+  credential?: string;
   /** Model round-trips per user message. */
   maxTurns?: number;
   /** Tool calls per user message; the rest are denied. Caps the damage of a runaway loop. */
@@ -94,7 +96,7 @@ export async function runOperator(opts: RunOptions): Promise<RunResult> {
   const now = opts.now ?? (() => Date.now());
   const specs = tools.map(toToolSpec);
   const byName = new Map(tools.map((t) => [t.name, t]));
-  const toolCtx: ToolContext = { sessionId, principal, context: opts.context, ...(signal ? { signal } : {}) };
+  const toolCtx: ToolContext = { sessionId, principal, context: opts.context, ...(signal ? { signal } : {}), ...(opts.credential ? { credential: opts.credential } : {}) };
 
   const contextText = Object.keys(opts.context).length > 0 ? `[Contexto de pantalla] ${JSON.stringify(opts.context)}\n\n` : '';
   history.push({ role: 'user', content: [{ type: 'text', text: `${contextText}${opts.userMessage}` }] });

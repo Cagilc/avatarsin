@@ -167,6 +167,25 @@ describe('a tool call to an imported API goes through the guard', () => {
   });
 });
 
+describe('a connector that acts with the person\'s session', () => {
+  it('sends their token only to the origin of the baseUrl: a redirect elsewhere travels without it', async () => {
+    const other = await serve((_q, _b, res) => res.end('{"huecos":[]}'));
+    const api = await serve(redirectTo(307, `${other.origin}/huecos`));
+    const spec = {
+      openapi: '3.0.3',
+      info: { title: 'Citas', version: '1' },
+      servers: [{ url: api.origin }],
+      paths: { '/huecos': { get: { operationId: 'listar_huecos', summary: 'Lista huecos', responses: { '200': { description: 'ok' } } } } },
+    };
+    const manifest = importOpenApi(spec, { id: 'citas', auth: { kind: 'session' } });
+    for (const t of manifest.tools) Object.assign(t, { risk: 'read', enabled: true, review: {} });
+    const tools = toolsFromManifest(manifest, { env: {}, mcp: async () => { throw new Error('no mcp'); }, fetch: guardedFetch({ policy: dev }) });
+    await tools[0]!.execute({}, { sessionId: 's', principal: { id: 'u', name: 'U', role: 'admin' }, context: {}, credential: 'jwt-de-la-persona' });
+    expect(api.seen[0]?.headers['authorization']).toBe('Bearer jwt-de-la-persona');
+    expect(other.seen[0]?.headers['authorization']).toBeUndefined();
+  });
+});
+
 // isInternalHost judges every DNS answer, so the rule is "only global unicast": a range nobody
 // listed is refused. These are answers a resolver can give that still reach this machine or its network.
 describe('isInternalHost: only global unicast passes', () => {

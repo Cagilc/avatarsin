@@ -33,6 +33,8 @@ export const hostConnectorAuthSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
   z.strictObject({ kind: z.literal('bearer'), env: envNameSchema }),
   z.strictObject({ kind: z.literal('header'), name: z.string().min(1), env: envNameSchema }),
+  /** The person's own host JWT (needs `identity`): the host's API sees who acts. */
+  z.strictObject({ kind: z.literal('session') }),
 ]);
 
 /**
@@ -176,6 +178,10 @@ export const hostManifestSchema = z
   .refine((m) => m.scripts.every((s) => s.scenes.every((sc) => sc.action === undefined || m.quickActions.some((q) => q.id === sc.action))), {
     message: 'una escena apunta a un botón que no existe',
     path: ['scripts'],
+  })
+  .refine((m) => m.identity !== undefined || m.connectors.every((c) => c.auth?.kind !== 'session'), {
+    message: 'un conector con auth session necesita identity en el manifiesto',
+    path: ['connectors'],
   });
 export type HostManifest = z.infer<typeof hostManifestSchema>;
 export type HostManifestInput = z.input<typeof hostManifestSchema>;

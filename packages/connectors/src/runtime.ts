@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool, type AnyTool, type Risk, type VerifyRead } from '@vex/operator';
+import { defineTool, type AnyTool, type Risk, type ToolContext, type VerifyRead } from '@vex/operator';
 import { validateJson } from './jsonSchema.ts';
 import type { ConnectorManifest, ConnectorTool, VerifyExpect } from './manifest.ts';
 import { contentToText, type McpClient } from './mcp/client.ts';
@@ -53,9 +53,14 @@ function planHttp(manifest: ConnectorManifest, tool: ConnectorTool, input: Recor
   return { method: b.method, url: url.toString(), ...(b.body && input['body'] !== undefined ? { body: input['body'] } : {}) };
 }
 
-function authHeaders(manifest: ConnectorManifest, env: RuntimeDeps['env']): Record<string, string> {
+function authHeaders(manifest: ConnectorManifest, env: RuntimeDeps['env'], ctx: ToolContext): Record<string, string> {
   const a = manifest.auth;
   if (a.kind === 'none') return {};
+  if (a.kind === 'session') {
+    // The person's own token, never a service account: without one (a Vex token, the demo login) the tool cannot act.
+    if (!ctx.credential) throw new Error(`${manifest.name} actúa con la sesión de la persona y esta petición no trae un token del host: entra con el acceso de la plataforma.`);
+    return { authorization: `Bearer ${ctx.credential}` };
+  }
   const secret = env[a.env];
   if (!secret) throw new Error(`Falta la variable de entorno ${a.env} con la credencial de ${manifest.name}.`);
   return a.kind === 'bearer' ? { authorization: `Bearer ${secret}` } : { [a.name]: secret };
@@ -128,11 +133,13 @@ function httpTool(manifest: ConnectorManifest, tool: ConnectorTool & { risk: Ris
       const timeout = AbortSignal.timeout(deps.timeoutMs ?? 15_000);
       const res = await doFetch(plan.url, {
         method: plan.method,
-        headers: { accept: 'application/json', ...(plan.body !== undefined ? { 'content-type': 'application/json' } : {}), ...authHeaders(manifest, deps.env) },
+        headers: { accept: 'application/json', ...(plan.body !== undefined ? { 'content-type': 'application/json' } : {}), ...authHeaders(manifest, deps.env, ctx) },
         ...(plan.body !== undefined ? { body: JSON.stringify(plan.body) } : {}),
         signal: ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout,
       });
       const text = await res.text();
+      // A session that the host no longer accepts (expired, or not valid for this service) is said plainly; nothing retries.
+      if (res.status === 401 && manifest.auth.kind === 'session') throw new Error(`${manifest.name} no acepta tu sesión (${res.status}): ha caducado o no vale para este servicio. Vuelve a entrar y repite la acción.`);
       if (!res.ok) throw new Error(`${manifest.name} respondió ${res.status}: ${text.slice(0, 300)}`);
       if (!text) return { ok: true, estado: res.status };
       try {

@@ -30,6 +30,7 @@ Un conector convierte una herramienta que Vex no conocía en acciones que puede 
 ## Seguridad
 
 - **Secretos**: el manifiesto solo guarda el *nombre* de la variable de entorno (`CITAS_TOKEN`). El valor vive en el entorno de Vex Core, nunca en la base de datos, el navegador ni la conversación.
+- **Actuar con la sesión de la persona** (`auth: { kind: 'session' }`): en vez de un secreto fijo, la herramienta manda como *bearer* el **JWT del host** con el que la persona entró (hace falta `identity` en el manifiesto; un manifiesto con `session` sin `identity` no valida). Así la API del host aplica los permisos de cada persona y no los de una cuenta de servicio (principio 2 de `CLAUDE.md`, también en los conectores). El token solo viaja al origen de la `baseUrl`: si una redirección cambia de origen, la guardia lo quita. No se guarda, no entra en la auditoría, en el flujo de eventos, en el contexto del modelo ni en la tarjeta de confirmación. Con un token propio de Vex (el login de demo) la herramienta falla diciendo que no hay token del host; si la API responde 401 (sesión caducada o no válida para ese servicio) falla con ese mensaje y no reintenta: una aprobación por canal que llega tarde se vuelve a pedir, nunca se guarda el token para reintentarla.
 - **MCP local = ejecutar código** en el servidor: solo arranca una **línea de comando completa** (comando y argumentos) que esté en `VEX_MCP_ALLOW`. Un intérprete listado con otros argumentos se rechaza. Sin la variable no arranca ninguno, tampoco en local.
 - **Importar desde una URL** (OpenAPI o MCP remoto): solo https y nunca hacia esta máquina ni redes privadas; en un servidor local se relaja para las herramientas de muestra. Vale igual para las URL que propone el manifiesto del host y para el endpoint del *grant* del estudio.
 - **Toda petición saliente pasa por la misma guardia** (`guardedFetch`): importar, llamar a una API importada, MCP remoto, el *grant* y los webhooks de aprobación. El nombre se resuelve y la conexión se fija a las direcciones comprobadas; las **redirecciones** se siguen a mano (3 saltos como mucho) y cada salto se comprueba igual; si un salto **cambia de origen, las credenciales no viajan** (solo `accept` y `content-type`). Una petición rechazada responde 400 con el motivo.
@@ -80,6 +81,6 @@ Solo dicen algo con Claude (`pnpm eval -- --provider anthropic`). Hay tests que 
 ## Límites conocidos
 
 - OpenAPI solo en JSON: no se lee YAML. OpenAPI 2 (Swagger) no se admite.
-- Autenticación: ninguna, bearer o cabecera con secreto del entorno. OAuth por usuario no está.
+- Autenticación: ninguna, bearer o cabecera con secreto del entorno, o `session` (el JWT de la propia persona). OAuth por usuario no está.
 - Con muchos conectores el número de herramientas crece. El siguiente paso es la búsqueda de herramientas bajo demanda en lugar de enviarlas todas.
 - Los servidores MCP remotos (HTTP) están implementados, pero solo se han probado los locales.

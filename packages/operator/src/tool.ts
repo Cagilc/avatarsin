@@ -9,6 +9,12 @@ export interface ToolContext {
   context: Record<string, unknown>;
   /** Fires when the user stops the run; long tools should honour it. */
   signal?: AbortSignal;
+  /**
+   * The person's own credential for the host (their JWT), only when the host's identity accepted
+   * it for this request. A connector with `auth.kind: 'session'` sends it, so the host's API sees
+   * who acts. Never logged, never shown, never kept beyond the run.
+   */
+  credential?: string;
 }
 
 /**

@@ -88,6 +88,9 @@ export interface AppOptions {
 const OPERATOR_POLICY: PermissionPolicy = { allow: ['platform:*', 'api:*', 'mcp:*'], deny: [], confirm: ['irreversible'] };
 
 /** Who the audit names for what the manifest proposes at start. */
+/** The request, once a host JWT was accepted for it: the token goes on to connectors with `auth.kind: 'session'`. */
+type CredentialRequest = FastifyRequest & { hostCredential?: string };
+
 const MANIFEST_PRINCIPAL: Principal = { id: 'manifiesto', name: 'Manifiesto del host', role: 'admin' };
 
 const idSchema = z.string().regex(/^[a-z][a-z0-9]{1,23}$/, 'id: minúsculas y dígitos, empieza por letra, máximo 24');
@@ -233,7 +236,11 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     let principal = tokens.verify(token);
     if (!principal && identity && token) {
       const result = await identity.verify(token);
-      if (result.ok) principal = result.principal;
+      if (result.ok) {
+        principal = result.principal;
+        // Only a host JWT travels on to connectors that act as the person; Vex's own tokens never do.
+        (req as CredentialRequest).hostCredential = token;
+      }
       else req.log.info({ reason: result.reason }, 'host token refused');
     }
     if (!principal) void reply.code(401).send({ error: 'Token ausente o inválido.' });
@@ -382,6 +389,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         policy,
         principal,
         context: body.context ?? {},
+        ...((req as CredentialRequest).hostCredential ? { credential: (req as CredentialRequest).hostCredential } : {}),
         history: session.history,
         userMessage: run.userMessage,
         system: await currentSystem(),

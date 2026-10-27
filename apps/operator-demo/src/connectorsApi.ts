@@ -24,7 +24,7 @@ export interface ConnectorView {
   description: string;
   source: { kind: 'openapi'; url?: string; operations?: number } | { kind: 'mcp-stdio'; command: string; args: string[] } | { kind: 'mcp-http'; url: string };
   baseUrl?: string;
-  auth: { kind: 'none' } | { kind: 'bearer'; env: string } | { kind: 'header'; name: string; env: string };
+  auth: { kind: 'none' } | { kind: 'bearer'; env: string } | { kind: 'header'; name: string; env: string } | { kind: 'session' };
   /** Which operations became tools (OpenAPI only). */
   filter?: { include: string[]; exclude: string[]; maxTools: number };
   guide: string;

@@ -271,6 +271,17 @@ describe('runtime against the appointments API', () => {
     expect(soft.verify!.confirms!({ ok: false, error: 'Agenda de citas respondió 404: no existe' }, { id: cita.id }, undefined)).toBe(false);
   });
 
+  it('auth session: the person\'s own token goes as the bearer; without one the tool says so; a refused one is said plainly', async () => {
+    const draft = importOpenApi(citasOpenApi(base), { id: 'citas', auth: { kind: 'session' } });
+    const huecos = toolsFromManifest(approveAll(draft), { env: {} }).find((t) => t.name === 'citas_listar_huecos')!;
+    const input = { fecha: '2026-10-30' };
+    expect(((await huecos.execute(input, { ...ctx, credential: TOKEN })) as { huecos: string[] }).huecos.length).toBeGreaterThan(0);
+    await expect(huecos.execute(input, ctx)).rejects.toThrow(/no trae un token del host/);
+    await expect(huecos.execute(input, { ...ctx, credential: 'caducado' })).rejects.toThrow(/no acepta tu sesión \(401\)/);
+    // The card never shows the credential: the preview is the request without headers.
+    expect(JSON.stringify(await huecos.preview!(input, { ...ctx, credential: TOKEN }))).not.toContain(TOKEN);
+  });
+
   it('a value expectation compares primitives by value, takes $input / $ references, and never matches an object', () => {
     const read = (data: unknown) => ({ ok: true as const, data });
     expect(verifyConfirms({ path: 'estado', equals: 'cancelada' }, read({ estado: 'cancelada' }), {}, {})).toBe(true);

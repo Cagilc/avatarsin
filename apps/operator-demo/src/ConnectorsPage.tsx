@@ -231,7 +231,7 @@ export function ConnectorsPage() {
           id: form.id.trim(),
           url: form.url.trim(),
           ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
-          ...(form.authEnv.trim() ? { auth: { kind: 'bearer', env: form.authEnv.trim() } } : {}),
+          ...(form.authEnv.trim() ? { auth: /^sesi[oó]n$/i.test(form.authEnv.trim()) ? { kind: 'session' } : { kind: 'bearer', env: form.authEnv.trim() } } : {}),
           ...(form.filter.trim() ? { filter: parseFilter(form.filter) } : {}),
         });
       } else {
@@ -290,7 +290,7 @@ export function ConnectorsPage() {
               <input {...field('baseUrl')} placeholder="https://api.ejemplo.com" />
             </label>
             <label>
-              Variable con el token <span className="muted">(opcional)</span>
+              Variable con el token <span className="muted">(opcional; escribe «sesión» para enviar el token de la propia persona)</span>
               <input {...field('authEnv')} placeholder="CITAS_TOKEN" />
             </label>
             <label className="wide">
