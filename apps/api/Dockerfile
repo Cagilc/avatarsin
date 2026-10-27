@@ -5,6 +5,8 @@
 # overrides in pnpm-workspace.yaml), so the same lockfile installs here as on the Windows machine.
 
 FROM node:24-alpine AS build
+# No TTY in a build: pnpm would otherwise stop `prune` to ask before purging node_modules.
+ENV CI=true
 RUN npm install -g pnpm@10.34.7
 WORKDIR /app
 COPY . .
