@@ -249,6 +249,70 @@ describe('connectors in Vex Core', () => {
     }
   }, 60_000);
 
+  it('imports only what the filter keeps; a new filter from the review takes effect on refresh', async () => {
+    await start();
+    const res = await app.inject({ method: 'POST', url: '/connectors/import/openapi', headers: admin, payload: { id: 'citas', url: `${CITAS}/openapi.json`, baseUrl: CITAS, filter: { include: ['GET'] } } });
+    expect(res.statusCode).toBe(201);
+    const m = res.json() as ConnectorManifest;
+    expect(m.tools.map((t) => t.name)).toEqual(['citas_listar_huecos', 'citas_listar_citas', 'citas_obtener_cita']);
+    expect(m.filter).toEqual({ include: ['GET'], exclude: [], maxTools: 200 });
+    expect(m.source).toMatchObject({ kind: 'openapi', operations: 6 });
+
+    const review = await app.inject({
+      method: 'POST',
+      url: '/connectors/citas/review',
+      headers: admin,
+      payload: { decisions: m.tools.map((t) => ({ name: t.name, risk: t.suggestedRisk, enabled: true })), filter: { include: ['/citas'], exclude: ['DELETE'] } },
+    });
+    expect(review.statusCode).toBe(200);
+    expect(await toolNames()).toEqual(expect.arrayContaining(['citas_listar_huecos', 'citas_obtener_cita']));
+
+    const refresh = await app.inject({ method: 'POST', url: '/connectors/citas/refresh', headers: admin });
+    expect(refresh.json()).toMatchObject({ added: ['citas_crear_cita', 'citas_enviar_recordatorio'], removed: ['citas_listar_huecos'], changed: [] });
+    const names = await toolNames();
+    expect(names).toEqual(expect.arrayContaining(['citas_listar_citas', 'citas_obtener_cita']));
+    expect(names).not.toContain('citas_listar_huecos');
+    expect(names).not.toContain('citas_crear_cita'); // new: unreviewed
+  });
+
+  it('refuses a filter that leaves nothing, too many tools or a bad rule, with a 400 that says how to fix it', async () => {
+    await start();
+    const attempt = async (filter: unknown) => app.inject({ method: 'POST', url: '/connectors/import/openapi', headers: admin, payload: { id: 'citas', url: `${CITAS}/openapi.json`, baseUrl: CITAS, filter } });
+    let res = await attempt({ include: ['PATCH'] });
+    expect([res.statusCode, (res.json() as { error: string }).error]).toEqual([400, expect.stringMatching(/no deja ninguna/)]);
+    res = await attempt({ maxTools: 2 });
+    expect([res.statusCode, (res.json() as { error: string }).error]).toEqual([400, expect.stringMatching(/tope es 2/)]);
+    res = await attempt({ include: ['citas'] });
+    expect([res.statusCode, (res.json() as { error: string }).error]).toEqual([400, expect.stringMatching(/regla no válida/)]);
+    expect((await app.inject({ method: 'GET', url: '/connectors', headers: admin })).json()).toEqual([]);
+  });
+
+  it('stops reading a specification past the size cap, announced or not', async () => {
+    const big = 21 * 1024 * 1024;
+    let served = 0;
+    const serve = (headers: Record<string, string>) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (served >= big) return controller.close();
+            served += 1024 * 1024;
+            controller.enqueue(new Uint8Array(1024 * 1024));
+          },
+        }),
+        { status: 200, headers },
+      );
+    await start({ connectors: { env: {}, mcpAllow: [], urlPolicy: { allowHttp: true, allowInternal: true }, fetch: async () => serve({ 'content-length': String(big) }) } });
+    let res = await app.inject({ method: 'POST', url: '/connectors/import/openapi', headers: admin, payload: { id: 'grande', url: 'http://api.ejemplo.com/openapi.json' } });
+    expect([res.statusCode, (res.json() as { error: string }).error]).toEqual([400, expect.stringMatching(/supera 20 MB/)]);
+    // The announced size is refused before reading: at most the chunk the stream pre-pulls on its own.
+    expect(served).toBeLessThanOrEqual(1024 * 1024);
+    await app.close();
+    await start({ connectors: { env: {}, mcpAllow: [], urlPolicy: { allowHttp: true, allowInternal: true }, fetch: async () => serve({}) } });
+    res = await app.inject({ method: 'POST', url: '/connectors/import/openapi', headers: admin, payload: { id: 'grande', url: 'http://api.ejemplo.com/openapi.json' } });
+    expect([res.statusCode, (res.json() as { error: string }).error]).toEqual([400, expect.stringMatching(/supera 20 MB/)]);
+    expect(served).toBeLessThanOrEqual(big);
+  });
+
   it('keeps connectors and their reviews across restarts, and refreshes from the source', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vex-conn-'));
     try {

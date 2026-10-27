@@ -169,6 +169,12 @@ Mejoras:
     - `guardedFetch` también envuelve el *grant* del estudio y los webhooks de aprobación, no solo los conectores.
     - Las 23 pruebas de la revisión viven en `apps/api/src/outbound.test.ts` (servidores HTTP reales); `review/pr1-pruebas` en GitHub queda obsoleta. La PR #1 de Oscar se cierra cuando `wf/08-guardia` llegue a `main` (César).
 - **8.2 P2 filtro de operaciones al importar** — sin clave. Desbloquea cualquier API real.
+  - **Hecho el 2026-10-27**, rama local `wf/08-filtro`. Puertas: tipado OK, 307 pruebas (api 143, operator 46, format 22, runtime 12, connectors 21, server 48, assistant 15), banco 15/15, banco del estudio 12/12, demo compilada, e2e 9/9 y 8/8, `salud.js` limpio. Decisiones:
+    - Contrato en `packages/connectors/src/filter.ts`: reglas `GET`, `/ruta` (prefijo **por segmentos**: `/citas` vale para `/citas/{id}`, no para `/citasx`), `GET /ruta` y `tag:x`; `include` se queda (vacío = todas), `exclude` quita, `maxTools` 200 por defecto y 500 como mucho. Una regla mal escrita no pasa el esquema.
+    - El filtro **se guarda en el conector** (`manifest.filter`) y el refresco lo vuelve a aplicar; la revisión puede cambiarlo y el siguiente «Actualizar» lo aplica (sin borrar el conector ni perder lo aprobado). `source.operations` guarda cuántas tenía la especificación.
+    - Un filtro que no deja nada, o que deja más de `maxTools`, es un 400 que dice cómo acotar. Entra por la petición de importación, por `connectors[].filter` del manifiesto (solo fuente `openapi`, con `refine`) y por el formulario de la demo (una regla por línea, «-» excluye).
+    - Especificación hasta **20 MB** con lectura acotada por trozos: se corta al pasar el tope aunque el servidor no anuncie (o mienta en) `content-length`; timeout de descarga a 30 s.
+    - Queda para después: búsqueda de herramientas bajo demanda cuando aun filtrado haya muchas; OpenAPI en YAML.
 - **8.3 P1 identidad JWT/OIDC por manifiesto** — sin clave. `identity { jwks | secretEnv, issuer, audience, claims }`; test por cada rechazo.
 - **Paso 4** en cuanto haya clave (se intercala donde toque): medir los dos bancos y fijar mínimos.
 - **8.4 P3 ver el efecto** — sin clave para el mecanismo; casos en el banco en modo guion.

@@ -170,15 +170,18 @@ describe('Vex Core with a host manifest', () => {
 
   it('proposes the manifest connectors as drafts: nothing reaches the model until a person reviews', async () => {
     const manifest = parseHostManifest(
-      JSON.stringify({ format: 'vex-host', version: 1, host: { name: 'Demo', domain: 'demo.example' }, connectors: [{ id: 'citas', name: 'Agenda', source: { kind: 'openapi', url: `${citasBase}/openapi.json` } }] }),
+      JSON.stringify({ format: 'vex-host', version: 1, host: { name: 'Demo', domain: 'demo.example' }, connectors: [{ id: 'citas', name: 'Agenda', source: { kind: 'openapi', url: `${citasBase}/openapi.json` }, filter: { include: ['GET'] } }] }),
       'test',
     );
     await start({ manifest, connectors: { urlPolicy: LOCAL } });
     expect((await info()).host.proposals).toEqual([{ id: 'citas', status: 'proposed' }]);
-    const list = (await app!.inject({ method: 'GET', url: '/connectors', headers: headers() })).json() as Array<{ id: string; name: string; tools: Array<{ enabled: boolean; risk: string | null }> }>;
+    const list = (await app!.inject({ method: 'GET', url: '/connectors', headers: headers() })).json() as Array<{ id: string; name: string; filter?: unknown; tools: Array<{ enabled: boolean; risk: string | null; binding: { method?: string } }> }>;
     expect(list.map((c) => c.id)).toEqual(['citas']);
     expect(list[0]!.name).toBe('Agenda');
-    expect(list[0]!.tools.length).toBeGreaterThan(0);
+    // The manifest's filter travels with the proposal: only the reads became tools.
+    expect(list[0]!.tools.length).toBe(3);
+    expect(list[0]!.tools.every((t) => t.binding.method === 'GET')).toBe(true);
+    expect(list[0]!.filter).toEqual({ include: ['GET'], exclude: [], maxTools: 200 });
     expect(list[0]!.tools.every((t) => !t.enabled && t.risk === null)).toBe(true);
     expect(await names()).toEqual([...PLATFORM_TOOLS, 'leer_guia']);
     const proposed = store.auditEntries.find((e) => e.tool === 'importar_conector');

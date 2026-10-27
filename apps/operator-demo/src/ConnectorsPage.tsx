@@ -194,7 +194,7 @@ export function ConnectorsPage() {
   const [list, setList] = useState<ConnectorView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<'openapi' | 'mcp'>('openapi');
-  const [form, setForm] = useState({ id: 'citas', url: 'http://127.0.0.1:8790/openapi.json', baseUrl: '', authEnv: '', command: 'node', args: '', mcpId: 'notas' });
+  const [form, setForm] = useState({ id: 'citas', url: 'http://127.0.0.1:8790/openapi.json', baseUrl: '', authEnv: '', filter: '', command: 'node', args: '', mcpId: 'notas' });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -226,6 +226,7 @@ export function ConnectorsPage() {
           url: form.url.trim(),
           ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
           ...(form.authEnv.trim() ? { auth: { kind: 'bearer', env: form.authEnv.trim() } } : {}),
+          ...(form.filter.trim() ? { filter: parseFilter(form.filter) } : {}),
         });
       } else {
         await importMcp(auth.token, { id: form.mcpId.trim(), transport: 'stdio', command: form.command.trim(), args: form.args.split('\n').map((a) => a.trim()).filter(Boolean) });
@@ -236,6 +237,12 @@ export function ConnectorsPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** One rule per line; a leading "-" excludes. Vex Core validates each rule. */
+  const parseFilter = (text: string) => {
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    return { include: lines.filter((l) => !l.startsWith('-')), exclude: lines.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim()) };
   };
 
   const field = (key: keyof typeof form) => ({ value: form[key], onChange: (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value })) });
@@ -279,6 +286,10 @@ export function ConnectorsPage() {
             <label>
               Variable con el token <span className="muted">(opcional)</span>
               <input {...field('authEnv')} placeholder="CITAS_TOKEN" />
+            </label>
+            <label className="wide">
+              Filtro de operaciones <span className="muted">(opcional; una regla por línea: GET, /citas, GET /citas o tag:agenda; con «-» delante excluye)</span>
+              <textarea rows={2} {...field('filter')} placeholder={'GET /citas\n-/citas/internas'} />
             </label>
           </div>
         ) : (

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createCitasApp, citasOpenApi, NOTAS_MCP_SCRIPT } from '@vex/sample-tools';
+import { importFilterSchema, parseRule, selected, type ImportFilter, type Operation } from './filter.ts';
 import { importOpenApi } from './openapi.ts';
 import { importMcp } from './mcp/import.ts';
 import { StdioMcpClient } from './mcp/client.ts';
@@ -102,6 +103,61 @@ describe('OpenAPI import', () => {
   it('rejects documents it cannot use', () => {
     expect(() => importOpenApi({ swagger: '2.0' }, { id: 'x' })).toThrow(/OpenAPI 3/);
     expect(() => importOpenApi({ ...citasOpenApi('/relativo'), servers: [{ url: '/v1' }] }, { id: 'x' })).toThrow(/URL base/);
+  });
+});
+
+describe('import filter: which operations become tools', () => {
+  const op = (method: Operation['method'], path: string, tags: string[] = []): Operation => ({ method, path, tags });
+  const filter = (f: Partial<ImportFilter>) => importFilterSchema.parse(f);
+
+  it('reads a method, a path prefix by segment, both, or a tag', () => {
+    expect(parseRule('get')).toEqual({ method: 'GET' });
+    expect(parseRule('/citas/')).toEqual({ prefix: '/citas' });
+    expect(parseRule('POST /citas')).toEqual({ method: 'POST', prefix: '/citas' });
+    expect(parseRule('tag:Agenda')).toEqual({ tag: 'Agenda' });
+    expect(() => parseRule('citas')).toThrow(/no válida/);
+    expect(importFilterSchema.safeParse({ include: ['citas'] }).success).toBe(false);
+    expect(importFilterSchema.safeParse({ maxTools: 0 }).success).toBe(false);
+    expect(filter({})).toEqual({ include: [], exclude: [], maxTools: 200 });
+  });
+
+  it('keeps what matches include (empty = all) and then drops what matches exclude', () => {
+    expect(selected(op('GET', '/citas/{id}'), filter({ include: ['/citas'] }))).toBe(true);
+    expect(selected(op('GET', '/citasx'), filter({ include: ['/citas'] }))).toBe(false);
+    expect(selected(op('DELETE', '/citas/{id}'), filter({ include: ['/citas'], exclude: ['DELETE'] }))).toBe(false);
+    expect(selected(op('GET', '/x', ['agenda']), filter({ include: ['tag:AGENDA'] }))).toBe(true);
+    expect(selected(op('GET', '/x'), filter({ include: ['tag:agenda'] }))).toBe(false);
+    expect(selected(op('POST', '/citas'), filter({ include: ['GET /citas', 'POST /citas'] }))).toBe(true);
+    expect(selected(op('POST', '/huecos'), filter({ include: ['GET /citas', 'POST /citas'] }))).toBe(false);
+    expect(selected(op('POST', '/huecos'), filter({ exclude: ['/'] }))).toBe(false);
+  });
+
+  it('imports only the selected operations, remembers the filter and the total, and refuses a filter that leaves nothing', () => {
+    const spec = citasOpenApi('http://127.0.0.1:9');
+    const reads = importOpenApi(spec, { id: 'citas', now: () => NOW, filter: filter({ include: ['GET'] }) });
+    expect(reads.tools.map((t) => t.name)).toEqual(['citas_listar_huecos', 'citas_listar_citas', 'citas_obtener_cita']);
+    expect(reads.filter).toEqual({ include: ['GET'], exclude: [], maxTools: 200 });
+    expect(reads.source).toMatchObject({ kind: 'openapi', operations: 6 });
+    const noDelete = importOpenApi(spec, { id: 'citas', now: () => NOW, filter: filter({ include: ['/citas'], exclude: ['DELETE'] }) });
+    expect(noDelete.tools.map((t) => t.name)).toEqual(['citas_listar_citas', 'citas_crear_cita', 'citas_obtener_cita', 'citas_enviar_recordatorio']);
+    expect(() => importOpenApi(spec, { id: 'citas', filter: filter({ include: ['PATCH'] }) })).toThrow(/no deja ninguna de las 6/);
+  });
+
+  it('caps the number of tools and says how to narrow the import', () => {
+    const spec = citasOpenApi('http://127.0.0.1:9');
+    expect(() => importOpenApi(spec, { id: 'citas', filter: filter({ maxTools: 2 }) })).toThrow(/6 operaciones y el tope es 2.*include\/exclude/);
+    // `POST /citas` would also keep `POST /citas/{id}/recordatorio` (prefix by segment): two reads instead.
+    expect(importOpenApi(spec, { id: 'citas', filter: filter({ include: ['GET /huecos', 'GET /citas/{id}'], maxTools: 2 }) }).tools.map((t) => t.name)).toEqual(['citas_listar_huecos', 'citas_obtener_cita']);
+  });
+
+  it('a refresh applies the same filter and keeps it', () => {
+    const spec = citasOpenApi('http://127.0.0.1:9');
+    const stored = approveAll(importOpenApi(spec, { id: 'citas', now: () => NOW, filter: filter({ include: ['GET'] }) }));
+    const fresh = importOpenApi(spec, { id: 'citas', now: () => NOW, filter: stored.filter! });
+    const report = refreshConnector(stored, fresh, NOW);
+    expect(report).toMatchObject({ added: [], removed: [], changed: [] });
+    expect(report.manifest.filter).toEqual(stored.filter);
+    expect(liveTools(report.manifest).map((t) => t.name)).toEqual(['citas_listar_huecos', 'citas_listar_citas', 'citas_obtener_cita']);
   });
 });
 

@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { riskSchema, toolNameSchema } from '@vex/operator';
+import { importFilterSchema } from './filter.ts';
 
 /** Where a connector came from; enough to import it again (refresh). */
 export const sourceSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('openapi'), url: z.string().url().optional(), title: z.string().optional(), version: z.string().optional() }),
+  /** `operations`: how many the specification had, filtered or not, so the review shows "12 de 700". */
+  z.object({ kind: z.literal('openapi'), url: z.string().url().optional(), title: z.string().optional(), version: z.string().optional(), operations: z.number().int().nonnegative().optional() }),
   z.object({ kind: z.literal('mcp-stdio'), command: z.string().min(1), args: z.array(z.string()) }),
   z.object({ kind: z.literal('mcp-http'), url: z.string().url() }),
 ]);
@@ -73,6 +75,8 @@ export const connectorManifestSchema = z.object({
   /** Base URL for HTTP tools. */
   baseUrl: z.string().url().optional(),
   auth: authSchema,
+  /** Which operations become tools (OpenAPI only). Saved so a refresh applies the same choice. */
+  filter: importFilterSchema.optional(),
   /**
    * Short guide for the model: what the tool is for, typical flows, traps. Loaded only when a
    * request needs this connector (tool `leer_guia`), so it does not grow the prompt.

@@ -35,6 +35,13 @@ describe('host manifest', () => {
     expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' } }, { id: 'citas', source: { kind: 'mcp-http', url: 'https://y' } }] }).success).toBe(false);
   });
 
+  it('lets an openapi connector say which operations to import, and nobody else', () => {
+    const withFilter = hostManifestSchema.parse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' }, filter: { include: ['GET /citas'] } }] });
+    expect(withFilter.connectors[0]!.filter).toEqual({ include: ['GET /citas'], exclude: [], maxTools: 200 });
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'notas', source: { kind: 'mcp-http', url: 'https://y' }, filter: { include: ['GET'] } }] }).success).toBe(false);
+    expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' }, filter: { maxTools: 501 } }] }).success).toBe(false);
+  });
+
   it('accepts tours: steps that point at registered elements, each with its pose and how it moves on', () => {
     expect(hostManifestSchema.parse(MINIMAL).tours).toEqual([]);
     const m = hostManifestSchema.parse({

@@ -13,6 +13,7 @@ export {
   type ConnectorSource,
   type ConnectorTool,
 } from './manifest.ts';
+export { DEFAULT_MAX_TOOLS, importFilterSchema, parseRule, ruleSchema, selected, type ImportFilter, type Operation } from './filter.ts';
 export { RISK_ORDER, lowerThan, suggestHttpRisk, suggestMcpRisk, type McpAnnotations, type RiskSuggestion } from './risk.ts';
 export { resolveRefs, validateJson, type JsonSchema } from './jsonSchema.ts';
 export { importOpenApi, type OpenApiImportOptions } from './openapi.ts';

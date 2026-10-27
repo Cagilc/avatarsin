@@ -68,7 +68,7 @@ export function refreshConnector(stored: ConnectorManifest, fresh: ConnectorMani
   const fresher = new Set(fresh.tools.map((t) => t.name));
   const removed = stored.tools.filter((t) => !fresher.has(t.name)).map((t) => t.name);
   return {
-    manifest: { ...fresh, id: stored.id, name: stored.name, guide: stored.guide, auth: stored.auth, baseUrl: fresh.baseUrl ?? stored.baseUrl, importedAt: stored.importedAt, updatedAt: now.toISOString(), tools },
+    manifest: { ...fresh, id: stored.id, name: stored.name, guide: stored.guide, auth: stored.auth, baseUrl: fresh.baseUrl ?? stored.baseUrl, ...(fresh.filter ?? stored.filter ? { filter: fresh.filter ?? stored.filter } : {}), importedAt: stored.importedAt, updatedAt: now.toISOString(), tools },
     added,
     removed,
     changed,

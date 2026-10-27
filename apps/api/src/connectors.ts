@@ -11,6 +11,7 @@ import {
   toolsFromManifest,
   type ConnectorAuth,
   type ConnectorManifest,
+  type ImportFilter,
   type McpClient,
   type RefreshReport,
   type ToolDecision,
@@ -21,7 +22,8 @@ import type { OperatorStore } from './storage.ts';
 
 /** Names the platform driver already uses; a connector tool may not shadow them. */
 const RESERVED = new Set(['buscar', 'leer_expediente', 'crear_expediente', 'crear_tarea', 'redactar_correo', 'enviar_correo', 'leer_guia']);
-const MAX_SPEC_BYTES = 2_000_000;
+/** A real specification with hundreds of operations runs to several MB; the read stops at this size. */
+const MAX_SPEC_BYTES = 20_000_000;
 
 export class ConnectorError extends Error {
   readonly status: number;
@@ -58,6 +60,7 @@ export interface OpenApiImportRequest {
   spec?: unknown;
   baseUrl?: string;
   auth?: ConnectorAuth;
+  filter?: ImportFilter;
 }
 
 export type McpImportRequest =
@@ -69,6 +72,8 @@ export interface ReviewRequest {
   guide?: string;
   auth?: ConnectorAuth;
   baseUrl?: string;
+  /** Takes effect on the next refresh, which re-reads the specification with it. */
+  filter?: ImportFilter;
 }
 
 /**
@@ -113,10 +118,30 @@ export class ConnectorRegistry {
   private async fetchSpec(url: string): Promise<unknown> {
     const reason = this.opts.checkUrl?.(url);
     if (reason) throw new ConnectorError(400, reason);
-    const res = await (this.opts.fetch ?? fetch)(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const res = await (this.opts.fetch ?? fetch)(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new ConnectorError(400, `No se pudo descargar la especificación: HTTP ${res.status}.`);
-    const text = await res.text();
-    if (text.length > MAX_SPEC_BYTES) throw new ConnectorError(400, 'La especificación supera 2 MB.');
+    const tooBig = new ConnectorError(400, `La especificación supera ${MAX_SPEC_BYTES / 1_000_000} MB.`);
+    if (Number(res.headers.get('content-length') ?? 0) > MAX_SPEC_BYTES) {
+      await res.body?.cancel();
+      throw tooBig;
+    }
+    // Read with a cap: a server that lies about (or omits) the length cannot make us buffer more.
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    const reader = res.body?.getReader();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > MAX_SPEC_BYTES) {
+          await reader.cancel();
+          throw tooBig;
+        }
+        chunks.push(value);
+      }
+    }
+    const text = new TextDecoder().decode(Buffer.concat(chunks));
     try {
       return JSON.parse(text);
     } catch {
@@ -137,6 +162,7 @@ export class ConnectorRegistry {
         ...(req.baseUrl ? { baseUrl: req.baseUrl } : {}),
         ...(req.url ? { sourceUrl: req.url } : {}),
         ...(req.auth ? { auth: req.auth } : {}),
+        ...(req.filter ? { filter: req.filter } : {}),
       });
     } catch (err) {
       throw new ConnectorError(400, err instanceof Error ? err.message : String(err));
@@ -202,6 +228,10 @@ export class ConnectorRegistry {
     if (req.guide !== undefined) next = { ...next, guide: req.guide.slice(0, 4000) };
     if (req.auth) next = { ...next, auth: authSchema.parse(req.auth) };
     if (req.baseUrl) next = { ...next, baseUrl: req.baseUrl };
+    if (req.filter) {
+      if (next.source.kind !== 'openapi') throw new ConnectorError(400, 'El filtro de operaciones solo vale para conectores OpenAPI.');
+      next = { ...next, filter: req.filter };
+    }
     return this.save(next);
   }
 
@@ -210,7 +240,14 @@ export class ConnectorRegistry {
     let fresh: ConnectorManifest;
     if (current.source.kind === 'openapi') {
       if (!current.source.url) throw new ConnectorError(400, 'Este conector se importó pegando la especificación; vuelve a importarlo.');
-      fresh = importOpenApi(await this.fetchSpec(current.source.url), { id, sourceUrl: current.source.url, ...(current.baseUrl ? { baseUrl: current.baseUrl } : {}), auth: current.auth });
+      let spec: unknown;
+      try {
+        spec = await this.fetchSpec(current.source.url);
+        fresh = importOpenApi(spec, { id, sourceUrl: current.source.url, ...(current.baseUrl ? { baseUrl: current.baseUrl } : {}), auth: current.auth, ...(current.filter ? { filter: current.filter } : {}) });
+      } catch (err) {
+        if (err instanceof ConnectorError) throw err;
+        throw new ConnectorError(400, err instanceof Error ? err.message : String(err));
+      }
     } else {
       await this.dropClient(id);
       const client = await this.openMcp(current.source);

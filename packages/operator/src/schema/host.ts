@@ -38,13 +38,26 @@ export const hostConnectorAuthSchema = z.discriminatedUnion('kind', [
  * A connector the host proposes. It enters the registry as a draft ("Sin revisar"): no tool
  * reaches the model until an administrator reviews it, exactly like a connector imported by hand.
  */
-export const hostConnectorSchema = z.strictObject({
-  id: connectorIdSchema,
-  name: z.string().min(1).max(80).optional(),
-  source: hostConnectorSourceSchema,
-  baseUrl: z.string().url().optional(),
-  auth: hostConnectorAuthSchema.optional(),
+/**
+ * Which operations of an OpenAPI source become tools, as the connector registry understands it:
+ * rules `GET`, `/ruta`, `GET /ruta` or `tag:nombre`; `include` keeps, `exclude` drops, `maxTools` caps.
+ */
+export const hostConnectorFilterSchema = z.strictObject({
+  include: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
+  exclude: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
+  maxTools: z.number().int().min(1).max(500).default(200),
 });
+
+export const hostConnectorSchema = z
+  .strictObject({
+    id: connectorIdSchema,
+    name: z.string().min(1).max(80).optional(),
+    source: hostConnectorSourceSchema,
+    baseUrl: z.string().url().optional(),
+    auth: hostConnectorAuthSchema.optional(),
+    filter: hostConnectorFilterSchema.optional(),
+  })
+  .refine((c) => c.filter === undefined || c.source.kind === 'openapi', { message: 'filter solo vale para una fuente openapi', path: ['filter'] });
 export type HostConnector = z.infer<typeof hostConnectorSchema>;
 
 /** The keys the host sends as screen context with each message, described for the model. */

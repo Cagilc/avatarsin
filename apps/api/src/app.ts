@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { authSchema } from '@vex/connectors';
+import { authSchema, importFilterSchema } from '@vex/connectors';
 import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage } from './approvals.ts';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
@@ -97,6 +97,7 @@ const importOpenApiBody = z.object({
   spec: z.record(z.string(), z.unknown()).optional(),
   baseUrl: z.string().url().optional(),
   auth: authSchema.optional(),
+  filter: importFilterSchema.optional(),
 });
 const importMcpBody = z.discriminatedUnion('transport', [
   z.object({ id: idSchema, name: z.string().min(1).max(80).optional(), transport: z.literal('stdio'), command: z.string().min(1), args: z.array(z.string()).optional() }),
@@ -107,6 +108,7 @@ const reviewBody = z.object({
   guide: z.string().max(4000).optional(),
   auth: authSchema.optional(),
   baseUrl: z.string().url().optional(),
+  filter: importFilterSchema.optional(),
 });
 
 const chatBody = z.object({
@@ -606,7 +608,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       try {
         const m =
           c.source.kind === 'openapi'
-            ? await registry.importOpenApi({ id: c.id, url: c.source.url, ...(c.name ? { name: c.name } : {}), ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}), ...(c.auth ? { auth: c.auth } : {}) })
+            ? await registry.importOpenApi({ id: c.id, url: c.source.url, ...(c.name ? { name: c.name } : {}), ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}), ...(c.auth ? { auth: c.auth } : {}), ...(c.filter ? { filter: c.filter } : {}) })
             : c.source.kind === 'mcp-http'
               ? await registry.importMcp({ id: c.id, transport: 'http', url: c.source.url, ...(c.name ? { name: c.name } : {}) })
               : await registry.importMcp({ id: c.id, transport: 'stdio', command: c.source.command, args: c.source.args, ...(c.name ? { name: c.name } : {}) });

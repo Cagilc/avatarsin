@@ -20,9 +20,11 @@ export interface ConnectorView {
   id: string;
   name: string;
   description: string;
-  source: { kind: 'openapi'; url?: string } | { kind: 'mcp-stdio'; command: string; args: string[] } | { kind: 'mcp-http'; url: string };
+  source: { kind: 'openapi'; url?: string; operations?: number } | { kind: 'mcp-stdio'; command: string; args: string[] } | { kind: 'mcp-http'; url: string };
   baseUrl?: string;
   auth: { kind: 'none' } | { kind: 'bearer'; env: string } | { kind: 'header'; name: string; env: string };
+  /** Which operations became tools (OpenAPI only). */
+  filter?: { include: string[]; exclude: string[]; maxTools: number };
   guide: string;
   tools: ConnectorToolView[];
   updatedAt: string;
@@ -47,7 +49,7 @@ async function call<T>(token: string, path: string, init: RequestInit = {}): Pro
 
 export const listConnectors = (token: string) => call<ConnectorView[]>(token, '/connectors');
 
-export const importOpenApi = (token: string, body: { id: string; url: string; baseUrl?: string; auth?: ConnectorView['auth'] }) =>
+export const importOpenApi = (token: string, body: { id: string; url: string; baseUrl?: string; auth?: ConnectorView['auth']; filter?: { include: string[]; exclude: string[] } }) =>
   call<ConnectorView>(token, '/connectors/import/openapi', { method: 'POST', body: JSON.stringify(body) });
 
 export const importMcp = (token: string, body: { id: string; transport: 'stdio'; command: string; args: string[] } | { id: string; transport: 'http'; url: string }) =>

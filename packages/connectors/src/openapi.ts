@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_TOOLS, selected, type ImportFilter, type Method } from './filter.ts';
 import { fingerprintOf, toolNameFor, type ConnectorAuth, type ConnectorManifest, type ConnectorTool } from './manifest.ts';
 import { resolveRefs, type JsonSchema } from './jsonSchema.ts';
 import { suggestHttpRisk } from './risk.ts';
@@ -12,6 +13,8 @@ export interface OpenApiImportOptions {
   baseUrl?: string;
   sourceUrl?: string;
   auth?: ConnectorAuth;
+  /** Which operations become tools. Without one, all of them, up to the default cap. */
+  filter?: ImportFilter;
   now?: () => Date;
 }
 
@@ -47,12 +50,18 @@ export function importOpenApi(spec: unknown, opts: OpenApiImportOptions): Connec
   const taken = new Set<string>();
   const tools: ConnectorTool[] = [];
   const paths = asObject(doc['paths']);
+  const filter = opts.filter;
+  const maxTools = filter?.maxTools ?? DEFAULT_MAX_TOOLS;
+  let operations = 0;
   for (const [path, rawItem] of Object.entries(paths)) {
     const item = asObject(resolveRefs(rawItem, doc));
     const shared = Array.isArray(item['parameters']) ? (item['parameters'] as Parameter[]) : [];
     for (const method of METHODS) {
       const op = asObject(item[method]);
       if (Object.keys(op).length === 0) continue;
+      operations += 1;
+      const tags = Array.isArray(op['tags']) ? (op['tags'] as unknown[]).filter((t): t is string => typeof t === 'string') : [];
+      if (filter && !selected({ method: method.toUpperCase() as Method, path, tags }, filter)) continue;
       const opParams = Array.isArray(op['parameters']) ? (op['parameters'] as Parameter[]) : [];
       const byKey = new Map<string, Parameter>();
       for (const p of [...shared, ...opParams].map((x) => resolveRefs(x, doc) as Parameter)) byKey.set(`${p.in}:${p.name}`, p);
@@ -101,7 +110,13 @@ export function importOpenApi(spec: unknown, opts: OpenApiImportOptions): Connec
       });
     }
   }
-  if (tools.length === 0) throw new Error('La especificación no tiene operaciones.');
+  if (operations === 0) throw new Error('La especificación no tiene operaciones.');
+  if (tools.length === 0) throw new Error(`El filtro no deja ninguna de las ${operations} operaciones; revisa include y exclude.`);
+  if (tools.length > maxTools) {
+    throw new Error(
+      `${filter ? 'El filtro deja' : 'La especificación tiene'} ${tools.length} operaciones y el tope es ${maxTools}: acota la importación con include/exclude (por método, prefijo de ruta o etiqueta) o sube maxTools.`,
+    );
+  }
 
   const now = (opts.now ?? (() => new Date()))().toISOString();
   const title = typeof info['title'] === 'string' ? info['title'] : opts.id;
@@ -109,9 +124,10 @@ export function importOpenApi(spec: unknown, opts: OpenApiImportOptions): Connec
     id: opts.id,
     name: opts.name ?? title,
     description: (typeof info['description'] === 'string' ? info['description'] : '').slice(0, 500),
-    source: { kind: 'openapi', ...(opts.sourceUrl ? { url: opts.sourceUrl } : {}), title, ...(typeof info['version'] === 'string' ? { version: info['version'] } : {}) },
+    source: { kind: 'openapi', ...(opts.sourceUrl ? { url: opts.sourceUrl } : {}), title, ...(typeof info['version'] === 'string' ? { version: info['version'] } : {}), operations },
     baseUrl,
     auth: opts.auth ?? { kind: 'none' },
+    ...(filter ? { filter } : {}),
     guide: '',
     tools,
     importedAt: now,
