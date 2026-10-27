@@ -146,5 +146,30 @@ Mejoras:
   - Un canal que falla no bloquea la tarjeta; cada envío va a la auditoría; el panel recibe un `notice`.
   - Paso 7 sin clave: completo (límites, casos desde sesión, aprobaciones por canal). Queda lo que necesita Claude o herramientas externas: analítica de onboarding, «¿cómo hago X?», generación de avatares y piezas desde imagen.
 
+### Paso 8 · Propuestas de Oscar (PR #3, revisadas el 2026-10-27)
+
+**Qué subió Oscar** (26–27 de octubre): la PR #3 `docs/propuesta-niveles-demos`, un solo documento (`docs/propuestas/2026-10-26-niveles-y-demos.md`, 85 líneas) con niveles de capacidad 0–3 y seis propuestas P1–P6; un comentario en esa PR; y en la PR #1 un comentario que es un correo mal dirigido (instrucciones para su propio agente: «procesa, integra todas las ramas y publica…»), que **no va para nosotros**. Lo relevante de su comentario en la #3: **no va a mandar código** (prueba por fuera y devuelve resultados), da la PR #2 por superada y pregunta si preferimos integrar la #1 nosotros desde `review/pr1-pruebas`. CI de `main` está en verde (`f1ebe3b`).
+
+**Revisión contra el código** (lo que hay que corregir de su documento antes de ejecutarlo):
+- **Niveles**: válidos como mapa, pero **no se añade un eje nuevo de permisos**. Se corresponden con interruptores que ya existen: nivel 0 siempre; nivel 1 = conectores aprobados ∩ `policy` ∩ *grant* (`permittedTools`); nivel 2 = `features.domDriver` (apagado) más `maxRisk` del *grant*; nivel 3 fuera del asistente. Solo documentación.
+- **P1 identidad**: coincide con el pendiente «`TokenService.verify` contra el JWT del host» (`apps/api/src/auth.ts` hoy firma HMAC propios; la demo de login ya está apagada fuera de local). Correcciones: el `principal.id` que salga de los *claims* alimenta sesiones, auditoría y límites de gasto, así que el mapa de *claims* es parte del contrato y lleva test; la descarga del JWKS pasa por la guardia de salida y se cachea; el token sigue llegando por `getToken` del host, nunca por el DOM. Identidad ≠ herramientas: las acciones de la plataforma siguen viniendo de conectores (OAuth por usuario sigue pendiente).
+- **P2 filtro al importar**: real. `MAX_SPEC_BYTES` = 2 MB en `apps/api/src/connectors.ts`; no hay `include`/`exclude` ni tope de herramientas ni en la petición de importación ni en `connectors[]` del manifiesto. Correcciones: filtro **declarativo y guardado en el borrador** (se reaplica al reimportar), primero lista blanca por prefijo de ruta, etiqueta y método, luego exclusiones; tope por conector con error claro; subir el límite de tamaño con lectura acotada. La búsqueda bajo demanda queda como segundo paso.
+- **P3 ver el efecto**: encaja con `preview` (lo que *va* a pasar) y con `aim`/`point` (ya existen). Correcciones: la verificación se declara en la herramienta del borrador (`verify: { tool, params }` con punteros a la respuesta), corre como lectura por política y auditoría, y **su fallo no convierte la acción en fallida** («no se pudo comprobar»). Evento `effect` en `events.ts` y evento DOM `vex-effect` desde `<vex-assistant>`.
+- **P4 modo presentador**: es una extensión de los tours (`tourStepSchema` ya tiene `say`, `pose`, `target`, `advanceOn`) con un paso que puede lanzar un botón rápido (`DirectProvider`) y un contador que lee `spend.ts`. Correcciones: vive en `packages/assistant` (misma etiqueta, atributo `presenter` + atajos de teclado), no en un paquete ni una ventana aparte; el gancho `reset` es una llamada saliente firmada como los webhooks de aprobación, solo para principal administrador y pasando por la guardia.
+- **P5 escaneo de una web**: necesita Claude (tours, preguntas frecuentes) y cifras de inyección; la descarga pasa por la guardia; el resultado es un borrador validado por `hostManifestSchema` que una persona aprueba. Después del paso 6.
+- **P6**: de acuerdo; sin código. **Dirección de producto**: decisión de César, fuera del plan técnico.
+- **Respuestas a sus preguntas**: (1) niveles sí, como mapa de interruptores existentes; (2) orden abajo; (3) `packages/assistant`; (4) sí: `pnpm eval -- --provider anthropic --min-pass`, `pnpm eval:studio -- --provider claude`, y en CI el `workflow_dispatch` `claude_eval` con el secreto; (5) un PNG entra como **una sola pieza** (`importLogo.ts`): para tener esqueleto hay que aportar SVG; imagen a piezas es la decisión 7.
+
+**Plan a ejecutar** (orden; cada paso en su rama `wf/…`, contratos y tests primero, puertas en verde, fila en `docs/seguridad.md` si cambia una defensa):
+- **8.1 Guardia de salida (cierra la PR #1)** — sin clave. Como Oscar no mandará código, se integra su rama sobre `main` conservando su commit (él como coautor) y se completan los ocho puntos de la revisión: cuerpo en la redirección, `OutboundBlockedError` → 400, «solo unicast global» con `net.BlockList`, fijar la conexión a la IP comprobada (`undici` `Agent` + `connect.lookup`, SNI y `Host` originales) con la prueba `DNS rebinding window` en verde, pruebas de `HttpMcpClient`, rechazo de `Request` como entrada, nota en `docs/conectores.md`. Es el hueco de seguridad abierto y está especificado al detalle.
+- **8.2 P2 filtro de operaciones al importar** — sin clave. Desbloquea cualquier API real.
+- **8.3 P1 identidad JWT/OIDC por manifiesto** — sin clave. `identity { jwks | secretEnv, issuer, audience, claims }`; test por cada rechazo.
+- **Paso 4** en cuanto haya clave (se intercala donde toque): medir los dos bancos y fijar mínimos.
+- **8.4 P3 ver el efecto** — sin clave para el mecanismo; casos en el banco en modo guion.
+- **8.5 P4 modo presentador** — sin clave; e2e de un guion de cinco escenas.
+- **Paso 6 driver DOM** — solo con cifras de inyección (paso 4).
+- **8.6 P5 escaneo** — después del paso 6, con Claude.
+- Pendiente de César en GitHub: responder a la PR #3 (con esta revisión), cerrar la #2, proteger `main`.
+
 ### Cuándo están pulidas las bases
 Un avatar del estudio opera en la demo con su personalidad y sus permisos; el banco con Claude supera el mínimo; la documentación cuenta lo que hay. Entonces se deciden repositorio y licencia y se publica.
