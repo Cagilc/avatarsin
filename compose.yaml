@@ -1,0 +1,25 @@
+# Vex Core for one client:  docker compose up -d
+# Secrets (the Anthropic key, VEX_TOKEN_SECRET, connector tokens) live in apps/api/.env on the
+# machine, never in the image. The SQLite file lives in the `vex-data` volume.
+services:
+  vex-core:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: vex-core:local
+    ports:
+      - '8787:8787'
+    env_file:
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      # The host manifest: a preset name or a path mounted into the container.
+      VEX_HOST_MANIFEST: ${VEX_HOST_MANIFEST:-demo-negocio}
+      # The exact origins of the host's pages that may call Vex Core from a browser.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5174}
+    volumes:
+      - vex-data:/data
+    restart: unless-stopped
+
+volumes:
+  vex-data: {}

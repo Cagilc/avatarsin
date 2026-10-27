@@ -10,7 +10,9 @@
     "test": "vitest run",
     "eval": "node evals/run.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "eval:export": "node evals/export.ts"
+    "eval:export": "node evals/export.ts",
+    "db:backup": "node scripts/backup.ts",
+    "db:restore": "node scripts/restore.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.2.0",

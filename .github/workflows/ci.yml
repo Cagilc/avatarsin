@@ -73,6 +73,41 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  container:
+    name: Container image builds, serves /health outside loopback, backs up and restores
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image from the repository root
+        run: docker build -f apps/api/Dockerfile -t vex-core:ci .
+
+      - name: Start with the demo preset and a fake key in an env file, as a client would
+        run: |
+          printf 'ANTHROPIC_API_KEY=sk-ant-test-no-es-real-123\n' > /tmp/vex.env
+          docker run -d --name vex --env-file /tmp/vex.env -e VEX_HOST_MANIFEST=demo-negocio -e CORS_ORIGIN=http://localhost:5174 -p 8787:8787 vex-core:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8787/health | grep -q '"ok":true'
+          curl -fsS http://127.0.0.1:8787/operator/info | grep -q 'Demo Negocio'
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8787/assistant.js | grep -q '^200$'
+          # Outside loopback the demo login does not exist: a production default, not a setting.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"userId":"u-cesar"}' http://127.0.0.1:8787/platform/auth/demo)" = "404"
+
+      - name: The key never reaches the logs, and the process is not root
+        run: |
+          if docker logs vex 2>&1 | grep -q 'sk-ant-test'; then echo 'la clave aparece en los logs'; exit 1; fi
+          test "$(docker exec vex id -u)" != "0"
+
+      - name: Hot backup inside the container, then check the copy
+        run: |
+          docker exec vex node scripts/backup.ts /data/vex.db /data/backups/vex.db
+          docker exec vex node scripts/restore.ts --check /data/backups/vex.db
+
+      - name: Container logs
+        if: always()
+        run: docker logs vex || true
+
   claude-eval:
     name: Eval bank with Claude
     if: github.event_name == 'workflow_dispatch' && inputs.claude_eval

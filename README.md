@@ -93,6 +93,16 @@ pnpm e2e:studio                      # el estudio en Edge: 4 recorridos, Vex imp
 
 Con clave, `pnpm eval -- --provider anthropic` mide a Claude con el mismo banco, y `pnpm eval:studio -- --provider claude` al asistente del estudio. GitHub Actions ejecuta todo lo anterior en cada push; la evaluación con Claude se lanza a mano y usa el secreto `ANTHROPIC_API_KEY`. Detalle en `docs/operador.md`.
 
+## Instalar en un cliente
+
+Una imagen (`apps/api/Dockerfile`), un `compose.yaml`, un volumen con el SQLite y los secretos en `apps/api/.env`:
+
+```bash
+docker compose up -d
+```
+
+Copia en caliente del SQLite con `node scripts/backup.ts`, restauración con `node scripts/restore.ts`, y un trabajo de CI que construye la imagen y la prueba fuera de loopback. Detalle en `docs/instalar.md`.
+
 ## Cómo se integra en una plataforma real
 
 0. **Manifiesto:** la plataforma se describe en un `manifest.json` (`presets/`, `VEX_HOST_MANIFEST`): nombre, dominio, claves del contexto de pantalla, conectores propuestos (sin revisar hasta que un administrador los apruebe), política y el avatar publicado por el estudio. Vive en el servidor y solo puede estrechar lo que Vex hace. Detalle en `docs/operador.md`.
