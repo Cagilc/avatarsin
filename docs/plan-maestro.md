@@ -176,6 +176,12 @@ Mejoras:
     - Especificación hasta **20 MB** con lectura acotada por trozos: se corta al pasar el tope aunque el servidor no anuncie (o mienta en) `content-length`; timeout de descarga a 30 s.
     - Queda para después: búsqueda de herramientas bajo demanda cuando aun filtrado haya muchas; OpenAPI en YAML.
 - **8.3 P1 identidad JWT/OIDC por manifiesto** — sin clave. `identity { jwks | secretEnv, issuer, audience, claims }`; test por cada rechazo.
+  - **Hecho el 2026-10-27**, rama local `wf/08-identidad`. Puertas: tipado OK, 315 pruebas (api 150, operator 47, format 22, runtime 12, connectors 21, server 48, assistant 15), banco 15/15, banco del estudio 12/12, e2e 9/9 y 8/8, `salud.js` limpio. Decisiones:
+    - `identity` en el manifiesto (`hostIdentitySchema`): `hs256` con `secretEnv` (nunca el secreto) o `jwks` con `url` y `algorithms` (RS256, ES256); `issuer` y `audience` obligatorios; `claims { id: sub, name, role, roles, defaultRole }`; `leewaySeconds` 60.
+    - Verificador `apps/api/src/identity.ts` con `node:crypto`: el algoritmo lo fija el manifiesto (nada de `alg: none` ni confusión HS256/RS256), `exp` obligatorio, `nbf`, `iss`, `aud` (cadena o lista). JWKS por la guardia de salida, caché 10 min, recarga ante `kid` desconocido como mucho una vez por minuto, y una caída del JWKS no tira las claves en caché. Verificaciones concurrentes comparten una descarga (hubo una carrera: la primera marcaba «cargado» antes de terminar).
+    - `principalOf` prueba primero los tokens propios y después el JWT del host; el motivo del rechazo va al log, el cliente recibe 401 genérico. `/operator/info` enseña `host.identity` solo cuando está configurada. Sin cambios en `<vex-assistant>`: `getToken` ya entrega lo que el host tenga.
+    - Tests con claves RSA y EC reales generadas al vuelo (`identity.test.ts`): aceptación, cada rechazo con su motivo, mapa de papeles, caché y recarga, y de punta a punta en Vex Core (admin por papel traducido, 403, 401, auditoría con la identidad del host, login de demo intacto).
+    - Queda: OAuth por usuario para los conectores (identidad ≠ herramientas) y el `PlatformClient` real.
 - **Paso 4** en cuanto haya clave (se intercala donde toque): medir los dos bancos y fijar mínimos.
 - **8.4 P3 ver el efecto** — sin clave para el mecanismo; casos en el banco en modo guion.
 - **8.5 P4 modo presentador** — sin clave; e2e de un guion de cinco escenas.

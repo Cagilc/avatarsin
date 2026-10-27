@@ -60,6 +60,35 @@ export const hostConnectorSchema = z
   .refine((c) => c.filter === undefined || c.source.kind === 'openapi', { message: 'filter solo vale para una fuente openapi', path: ['filter'] });
 export type HostConnector = z.infer<typeof hostConnectorSchema>;
 
+/**
+ * How a host's own session tokens (JWT) are verified, so a person signs in to Vex with the
+ * identity the host already gave them: a shared secret (`hs256`, named by its environment
+ * variable) or the host's public keys (`jwks`). Issuer and audience are always checked; `claims`
+ * says where the principal comes from. Without `identity`, only Vex Core's own tokens count.
+ */
+const identityClaimsSchema = z.strictObject({
+  /** Claim that becomes `principal.id`: sessions, audit and spending are keyed by it. */
+  id: z.string().min(1).max(100).default('sub'),
+  name: z.string().min(1).max(100).default('name'),
+  role: z.string().min(1).max(100).default('role'),
+  /** Host role value → Vex role (`admin` reviews connectors). Without it the value is used as is; a value not listed is refused. */
+  roles: z.record(z.string().min(1).max(100), z.string().min(1).max(40)).optional(),
+  /** Used when the token has no role claim. Without it such a token is refused. */
+  defaultRole: z.string().min(1).max(40).optional(),
+});
+const identityBase = {
+  issuer: z.string().min(1).max(500),
+  audience: z.string().min(1).max(500),
+  claims: identityClaimsSchema.prefault({}),
+  /** Clock skew tolerated for exp / nbf, in seconds. */
+  leewaySeconds: z.number().int().min(0).max(300).default(60),
+};
+export const hostIdentitySchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('hs256'), secretEnv: envNameSchema, ...identityBase }),
+  z.strictObject({ kind: z.literal('jwks'), url: z.string().url(), algorithms: z.array(z.enum(['RS256', 'ES256'])).min(1).default(['RS256', 'ES256']), ...identityBase }),
+]);
+export type HostIdentity = z.infer<typeof hostIdentitySchema>;
+
 /** The keys the host sends as screen context with each message, described for the model. */
 export const screenContextSchema = z.record(
   z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/, 'clave de contexto: letras, dígitos y guion bajo'),
@@ -116,6 +145,7 @@ export const hostManifestSchema = z
       domain: hostnameSchema,
     }),
     avatar: hostAvatarSchema.optional(),
+    identity: hostIdentitySchema.optional(),
     connectors: z.array(hostConnectorSchema).max(50).default([]).refine(uniqueIds, 'ids de conector repetidos'),
     /** The host's own permission policy. Default: the operator's (platform and reviewed connectors, confirm the irreversible). */
     policy: permissionPolicySchema.optional(),

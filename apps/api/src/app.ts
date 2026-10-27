@@ -11,6 +11,7 @@ import { OutboundBlockedError, checkOutboundUrl, guardedFetch, originAllowed, ty
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
 import { Engage } from './engage.ts';
 import { GrantClient, type GrantState } from './grant.ts';
+import { HostIdentity } from './identity.ts';
 import type { PlatformClient } from './platform/types.ts';
 import { RateLimiter } from './rateLimit.ts';
 import { SessionStore } from './sessions.ts';
@@ -176,6 +177,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const guide = registry.guideTool();
   // The studio's grant, only for a host whose manifest names its avatar integration.
   const grants = manifest?.avatar ? new GrantClient({ avatar: manifest.avatar, domain: manifest.host.domain, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), fetch: outboundFetch, ...opts.grant }) : null;
+  // The host's own JWTs, verified as the manifest says; the JWKS is fetched through the outbound guard.
+  const identity = manifest?.identity ? new HostIdentity(manifest.identity, { env: opts.connectors?.env ?? process.env, fetch: outboundFetch, ...(opts.now ? { now: opts.now } : {}) }) : null;
   const grantState = async (): Promise<GrantState | null> => (grants ? grants.current() : null);
   /**
    * What the model sees, recomputed per message: platform tools and reviewed connectors, narrowed by
@@ -225,8 +228,14 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return v === 'ai' || v === 'all' ? v : null;
   };
 
-  const principalOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
-    const principal = tokens.verify(bearer(req.headers.authorization));
+  const principalOf = async (req: FastifyRequest, reply: FastifyReply): Promise<Principal | null> => {
+    const token = bearer(req.headers.authorization);
+    let principal = tokens.verify(token);
+    if (!principal && identity && token) {
+      const result = await identity.verify(token);
+      if (result.ok) principal = result.principal;
+      else req.log.info({ reason: result.reason }, 'host token refused');
+    }
     if (!principal) void reply.code(401).send({ error: 'Token ausente o inválido.' });
     return principal;
   };
@@ -263,7 +272,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       host: {
         name: host.name,
         manifest: manifest !== undefined,
-        ...(manifest ? { domain: manifest.host.domain, features: manifest.features, proposals } : {}),
+        ...(manifest ? { domain: manifest.host.domain, features: manifest.features, proposals, ...(identity ? { identity: identity.kind } : {}) } : {}),
         // Where the page's <vex-assistant> finds the published avatar; public values, as in the studio's snippet.
         ...(manifest?.avatar ? { avatar: manifest.avatar } : {}),
       },
@@ -285,7 +294,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     });
   }
   app.get('/platform/estado', async (req, reply) => {
-    if (!principalOf(req, reply)) return undefined;
+    if (!await principalOf(req, reply)) return undefined;
     const [contactos, expedientes, tareas, correos, equipos] = await Promise.all([
       opts.platform.contactos(),
       opts.platform.expedientes(),
@@ -413,7 +422,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   };
 
   app.post('/operator/chat', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const body = chatBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
@@ -422,7 +431,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // A thumbs up or down on one reply, with the reason: what administrators look at to pick cases for the bank.
   app.post('/operator/feedback', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const body = feedbackBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
@@ -434,7 +443,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // --- Sessions as eval cases: administrators ---
   app.get('/admin/sessions', async (req, reply) => {
-    if (!adminOf(req, reply)) return undefined;
+    if (!await adminOf(req, reply)) return undefined;
     return store.listSessions(50).map((s) => {
       const fb = store.feedbackFor(s.id);
       return { ...s, feedback: { up: fb.filter((f) => f.verdict === 'up').length, down: fb.filter((f) => f.verdict === 'down').length, reasons: fb.filter((f) => f.reason).map((f) => ({ turn: f.turn, verdict: f.verdict, reason: f.reason })) } };
@@ -442,7 +451,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.get('/admin/sessions/:id/case', async (req, reply) => {
-    if (!adminOf(req, reply)) return undefined;
+    if (!await adminOf(req, reply)) return undefined;
     const id = (req.params as { id: string }).id;
     const session = sessions.get(id) ?? store.loadSession(id);
     if (!session) return reply.code(404).send({ error: 'Sesión desconocida.' });
@@ -458,12 +467,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // --- Spend and the pause switch: administrators ---
   app.get('/admin/spend', async (req, reply) => {
-    if (!adminOf(req, reply)) return undefined;
+    if (!await adminOf(req, reply)) return undefined;
     return { ...meter.report(), pause: pauseMode() };
   });
 
   app.post('/admin/pause', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     const body = pauseBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'mode: "ai", "all" o null.' });
@@ -474,33 +483,33 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // --- Announcements and quick actions: presentation data, served by the role in the token ---
   app.get('/engage/announcements', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     return engage.announcementsFor(principal);
   });
 
   app.post('/engage/announcements/:id/seen', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     if (!engage.markSeen(principal, (req.params as { id: string }).id)) return reply.code(404).send({ error: 'No hay ningún anuncio con ese id para ti.' });
     return { ok: true };
   });
 
   app.get('/engage/tours', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     return engage.toursFor(principal);
   });
 
   app.post('/engage/tours/:id/done', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     if (!engage.markTourDone(principal, (req.params as { id: string }).id)) return reply.code(404).send({ error: 'No hay ningún tour con ese id para ti.' });
     return { ok: true };
   });
 
   app.get('/engage/quick-actions', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const permitted = new Set((await currentTools()).map((t) => t.name));
     return engage.quickActionsFor(principal, permitted);
@@ -508,7 +517,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // A tool button is a one-call run through the operator loop: policy, confirmation, audit, history.
   app.post('/engage/quick-actions/:id/run', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const body = runBody.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
@@ -555,7 +564,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   }
 
   app.post('/operator/confirm', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const body = confirmBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
@@ -567,7 +576,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post('/operator/stop', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const body = stopBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'Cuerpo inválido.' });
@@ -577,8 +586,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   // --- Connectors: import, human review, refresh. Administrators only. ---
-  const adminOf = (req: FastifyRequest, reply: FastifyReply): Principal | null => {
-    const principal = principalOf(req, reply);
+  const adminOf = async (req: FastifyRequest, reply: FastifyReply): Promise<Principal | null> => {
+    const principal = await principalOf(req, reply);
     if (!principal) return null;
     if (principal.role !== 'admin') {
       void reply.code(403).send({ error: 'Solo un administrador puede conectar herramientas o aprobar sus riesgos.' });
@@ -623,12 +632,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.get('/connectors', async (req, reply) => {
-    if (!adminOf(req, reply)) return undefined;
+    if (!await adminOf(req, reply)) return undefined;
     return registry.list();
   });
 
   app.post('/connectors/import/openapi', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     try {
       const body = importOpenApiBody.parse(req.body);
@@ -641,7 +650,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post('/connectors/import/mcp', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     try {
       const body = importMcpBody.parse(req.body);
@@ -654,7 +663,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post('/connectors/:id/review', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     try {
       const body = reviewBody.parse(req.body);
@@ -672,7 +681,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post('/connectors/:id/refresh', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     try {
       const report = await registry.refresh((req.params as { id: string }).id);
@@ -684,7 +693,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.delete('/connectors/:id', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     try {
       const id = (req.params as { id: string }).id;
@@ -698,12 +707,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // Announcement drafts: administrators review what connector approvals wrote before anyone sees it.
   app.get('/engage/drafts', async (req, reply) => {
-    if (!adminOf(req, reply)) return undefined;
+    if (!await adminOf(req, reply)) return undefined;
     return engage.drafts();
   });
 
   app.post('/engage/announcements/:id/publish', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     const body = publishBody.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
@@ -714,7 +723,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.delete('/engage/announcements/:id', async (req, reply) => {
-    const principal = adminOf(req, reply);
+    const principal = await adminOf(req, reply);
     if (!principal) return undefined;
     const id = (req.params as { id: string }).id;
     if (!engage.remove(id)) return reply.code(404).send({ error: 'No hay ningún anuncio guardado con ese id (los del manifiesto se editan en el manifiesto).' });
@@ -723,7 +732,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.get('/operator/audit', async (req, reply) => {
-    const principal = principalOf(req, reply);
+    const principal = await principalOf(req, reply);
     if (!principal) return undefined;
     const sessionId = (req.query as { sessionId?: string }).sessionId;
     return store.audit({ principalId: principal.id, ...(sessionId ? { sessionId } : {}) });

@@ -35,6 +35,19 @@ describe('host manifest', () => {
     expect(hostManifestSchema.safeParse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' } }, { id: 'citas', source: { kind: 'mcp-http', url: 'https://y' } }] }).success).toBe(false);
   });
 
+  it('describes how to verify the host identity: a named secret or a JWKS, issuer and audience always', () => {
+    const hs = hostManifestSchema.parse({ ...MINIMAL, identity: { kind: 'hs256', secretEnv: 'HOST_JWT_SECRET', issuer: 'https://host.example', audience: 'vex' } });
+    expect(hs.identity).toEqual({ kind: 'hs256', secretEnv: 'HOST_JWT_SECRET', issuer: 'https://host.example', audience: 'vex', claims: { id: 'sub', name: 'name', role: 'role' }, leewaySeconds: 60 });
+    const jwks = hostManifestSchema.parse({ ...MINIMAL, identity: { kind: 'jwks', url: 'https://host.example/.well-known/jwks.json', issuer: 'host', audience: 'vex', claims: { role: 'roles', roles: { owner: 'admin', staff: 'gestora' } } } });
+    expect(jwks.identity).toMatchObject({ kind: 'jwks', algorithms: ['RS256', 'ES256'], claims: { id: 'sub', role: 'roles', roles: { owner: 'admin' } } });
+    for (const bad of [
+      { kind: 'hs256', secret: 'abc', issuer: 'h', audience: 'vex' }, // the secret itself, never
+      { kind: 'hs256', secretEnv: 'S', issuer: 'h' }, // no audience
+      { kind: 'jwks', url: 'https://x/jwks', issuer: 'h', audience: 'vex', algorithms: ['HS256'] },
+      { kind: 'none' },
+    ]) expect(hostManifestSchema.safeParse({ ...MINIMAL, identity: bad }).success, JSON.stringify(bad)).toBe(false);
+  });
+
   it('lets an openapi connector say which operations to import, and nobody else', () => {
     const withFilter = hostManifestSchema.parse({ ...MINIMAL, connectors: [{ id: 'citas', source: { kind: 'openapi', url: 'https://x/a.json' }, filter: { include: ['GET /citas'] } }] });
     expect(withFilter.connectors[0]!.filter).toEqual({ include: ['GET /citas'], exclude: [], maxTools: 200 });

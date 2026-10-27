@@ -53,6 +53,6 @@ El orden está en `docs/plan-maestro.md`. Hechos el paso 1 (manifiesto, propuest
 - Del paso 7, hecho: límites de gasto y pausa global (decisión 4); de sesión real a caso del banco (`apps/api/src/cases.ts`, `evals/cases.local.json`, 👍/👎 con motivo); aprobaciones por canal (`apps/api/src/approvals.ts`: webhook firmado o registro, enlace de un solo uso, página de aprobación del propio servidor).
 - Paso 4: medir con Claude (necesita la clave en `apps/api/.env` y `apps/server/.env`); después el driver DOM (6), solo con cifras de inyección. El banco del asistente del estudio ya existe (`apps/server/evals/`, `pnpm eval:studio`).
 - Ejecutar los bancos con Claude (`pnpm eval -- --provider anthropic`, `pnpm eval:studio -- --provider claude`) y fijar el acierto mínimo con datos.
-- Conectar el backend real: implementar `PlatformClient` y `TokenService.verify` contra el JWT de la plataforma.
+- Conectar el backend real: implementar `PlatformClient` (la identidad del host ya entra por `identity` del manifiesto: `apps/api/src/identity.ts`).
 - Conectores: búsqueda de herramientas bajo demanda cuando haya muchas; OpenAPI en YAML; OAuth por usuario.
 - Hito 2: núcleo del avatar sin React + web component; tema/skin en caliente.
