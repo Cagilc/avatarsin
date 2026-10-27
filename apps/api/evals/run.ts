@@ -4,7 +4,8 @@
 //   node evals/run.ts --provider scripted   keyword planner: regression gate, free
 //   node evals/run.ts --provider anthropic  Claude: real measure, costs money
 //   node evals/run.ts --only flujo-laura-completo,negativo-sin-destinatario
-//   node evals/run.ts --min-pass 0.8        exit 1 below this pass rate
+//   node evals/run.ts --min-pass 0.8        exit 1 when any category is below this pass rate
+//   node evals/run.ts --min-pass inyeccion=1,flujo=0.9,*=0.8   one floor per category, * for the rest
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ import { ScriptedProvider, type ModelProvider } from '@vex/operator';
 import { AnthropicProvider } from '../src/providers/anthropic.ts';
 import { configFromEnv, createProvider } from '../src/providers/index.ts';
 import { CASES } from './cases.ts';
-import { runBank, toMarkdown } from './harness.ts';
+import { belowMinimum, parseMinPass, runBank, toMarkdown } from './harness.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -38,12 +39,12 @@ else if (which === 'anthropic') {
 
 const only = arg('only')?.split(',');
 const cases = only ? CASES.filter((c) => only.includes(c.id)) : CASES;
-const minPass = Number(arg('min-pass') ?? (provider.name === 'scripted' ? 1 : 0));
+const mins = parseMinPass(arg('min-pass'), provider.name === 'scripted' ? 1 : 0);
 
 console.log(`Banco de encargos: ${cases.length} casos con ${provider.name}\n`);
 const report = await runBank(cases, provider, (r) => {
   const mark = r.skipped ? '·' : r.pass ? 'OK' : 'XX';
-  console.log(`${mark.padEnd(3)} ${r.id.padEnd(34)} ${String(r.calls.length).padStart(2)} acciones ${String(r.ms).padStart(6)} ms${r.failures.length ? `  ${r.failures.join('; ')}` : ''}`);
+  console.log(`${mark.padEnd(3)} ${r.id.padEnd(36)} ${r.host.padEnd(10)} ${String(r.calls.length).padStart(2)} acciones ${String(r.ms).padStart(6)} ms${r.failures.length ? `  ${r.failures.join('; ')}` : ''}`);
 });
 
 const outDir = join(here, 'reports');
@@ -56,5 +57,10 @@ writeFileSync(join(outDir, `latest-${slug}.md`), md);
 if (process.env['GITHUB_STEP_SUMMARY']) writeFileSync(process.env['GITHUB_STEP_SUMMARY'], md, { flag: 'a' });
 
 console.log(`\n${report.passed}/${report.run} superados (${Math.round(report.passRate * 100)} %), ${report.skipped} omitidos · p50 ${report.msP50} ms · ${report.costUsd.toFixed(4)} USD`);
+console.log(`Por sistema: ${Object.entries(report.byHost).map(([k, v]) => `${k} ${v.passed}/${v.run}`).join(' · ')}`);
 console.log(`Informe: ${join('evals', 'reports', `latest-${slug}.md`)}`);
-if (report.passRate < minPass) process.exit(1);
+const below = belowMinimum(report, mins);
+if (below.length) {
+  console.error(`\nPor debajo del mínimo:\n- ${below.join('\n- ')}`);
+  process.exit(1);
+}

@@ -176,12 +176,13 @@ La demo tiene un **laboratorio del avatar** en `http://localhost:5174/#estados` 
 `apps/api/evals/cases.ts`: 24 peticiones reales con el resultado que deben dejar en la plataforma simulada (llamadas en orden, acciones prohibidas, correos y destinatarios exactos, expedientes y tareas nuevos, fragmentos de la respuesta, tope de acciones, usuario en la auditoría). Categorías: flujo, contexto, búsqueda, negativo (no debe hacer nada), **inyección** (notas, nombres y etiquetas que intentan dar órdenes al agente), permisos y lenguaje natural.
 
 ```bash
-pnpm eval -- --provider scripted     # gratis: puerta de regresión (15 casos, los otros 9 son solo para Claude)
+pnpm eval -- --provider scripted     # gratis: puerta de regresión (17 casos, los otros 21 son solo para Claude)
 pnpm eval -- --provider anthropic    # mide a Claude de verdad: cuesta dinero, necesita la clave
 pnpm eval -- --only flujo-laura-completo,negativo-sin-destinatario
+pnpm eval -- --provider anthropic --min-pass inyeccion=1,flujo=0.9,*=0.8   # un mínimo por categoría, * para el resto
 ```
 
-Cada ejecución deja un JSON y `apps/api/evals/reports/latest-<proveedor>.md` con acierto por categoría, latencia p50 y máxima, acciones por encargo y coste estimado. El modo guion pasa los 15 que entiende; **con Claude no se ha ejecutado todavía** porque no hay clave en este equipo. Los casos de inyección y de lenguaje natural solo dicen algo con Claude.
+Cada ejecución deja un JSON y `apps/api/evals/reports/latest-<proveedor>.md` con acierto por categoría **y por sistema de registro** (`plataforma`, `citas`, `catalogo`, `crm`, `mixto`: tres hosts de muestra de tipos distintos, `docs/conectores.md`), latencia p50 y máxima, acciones por encargo y coste estimado. `--min-pass` juzga cada categoría contra su mínimo (`0.8` para todas, o `categoria=valor` con `*` para el resto) y sale con 1 si alguna queda por debajo. El modo guion pasa los 17 que entiende; **con Claude no se ha ejecutado todavía** porque no hay clave en este equipo. Los casos de inyección, de lenguaje natural, de conectores con texto libre y mixtos solo dicen algo con Claude.
 
 **De una sesión real a un caso del banco.** Cada respuesta lleva 👍/👎 en el panel; el 👎 pide un motivo (opcional) y todo va a `POST /operator/feedback`, que solo guarda lo de la propia sesión. Un administrador lista las conversaciones con sus votos (`GET /admin/sessions`) y exporta un turno como borrador de caso (`GET /admin/sessions/:id/case?turn=n&anonymize=1`, `apps/api/src/cases.ts`): la petición y su contexto de pantalla salen del historial; de la auditoría salen las llamadas que funcionaron (en orden), las rechazadas o denegadas (`forbidden`), los correos y sus destinatarios tal como se confirmaron, los expedientes y tareas creados, las citas del conector y el usuario. Con `anonymize`, los correos y teléfonos se sustituyen por alias, los mismos en la petición y en las expectativas. Desde la terminal:
 

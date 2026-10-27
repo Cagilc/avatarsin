@@ -20,7 +20,7 @@ export const evalCaseJsonSchema = z.strictObject({
   context: z.record(z.string(), z.unknown()).optional(),
   user: z.enum(['u-cesar', 'u-ana']).optional(),
   confirm: z.enum(['approve', 'reject']).optional(),
-  connectors: z.array(z.literal('citas')).optional(),
+  connectors: z.array(z.enum(['citas', 'catalogo', 'crm'])).optional(),
   expect: z.strictObject({
     calls: z.array(z.string()).optional(),
     forbidden: z.array(z.string()).optional(),

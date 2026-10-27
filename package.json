@@ -10,6 +10,8 @@
     "dev:api": "pnpm --filter @vex/api dev",
     "dev:demo": "pnpm --filter @vex/operator-demo dev",
     "dev:citas": "pnpm --filter @vex/sample-tools citas",
+    "dev:catalogo": "pnpm --filter @vex/sample-tools catalogo",
+    "dev:crm": "pnpm --filter @vex/sample-tools crm",
     "dev:studio-server": "pnpm --filter @vexstudio/server dev",
     "dev:studio": "pnpm --filter @vexstudio/studio dev",
     "build": "pnpm -r build",

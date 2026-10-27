@@ -1,0 +1,13 @@
+{
+  "format": "vex-host",
+  "version": 1,
+  "host": { "name": "la tienda de mobiliario", "domain": "localhost" },
+  "connectors": [
+    { "id": "tienda", "name": "Catálogo y pedidos", "source": { "kind": "openapi", "url": "http://127.0.0.1:8791/openapi.json" } }
+  ],
+  "policy": { "allow": ["api:*", "leer_guia"], "deny": [], "confirm": ["irreversible"] },
+  "screenContext": {
+    "pedidoId": { "description": "Id del pedido que el usuario tiene abierto, si hay uno." },
+    "clienteEmail": { "description": "Correo del cliente que el usuario tiene abierto." }
+  }
+}
