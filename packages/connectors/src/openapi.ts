@@ -30,6 +30,29 @@ function asObject(v: unknown): Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+/**
+ * A write whose path shape makes the read-back obvious gets a suggested verification: POST on a
+ * collection → GET on `collection/{id}` with the id from the response; PUT/PATCH on an item → GET
+ * on the same item; DELETE on an item → the same GET, expecting "not found". The review can change
+ * or clear it.
+ */
+function suggestVerifications(tools: ConnectorTool[]): void {
+  const gets = tools.filter((t) => t.binding.kind === 'http' && t.binding.method === 'GET');
+  for (const t of tools) {
+    if (t.binding.kind !== 'http' || t.binding.method === 'GET') continue;
+    const { method, path } = t.binding;
+    if (method === 'POST') {
+      const item = gets.find((g) => g.binding.kind === 'http' && g.binding.pathParams.length === 1 && g.binding.path === `${path}/{${g.binding.pathParams[0]}}`);
+      if (item && item.binding.kind === 'http') t.verify = { tool: item.name, params: { [item.binding.pathParams[0]!]: `$.${item.binding.pathParams[0]!}` }, expect: 'exists' };
+      continue;
+    }
+    const same = gets.find((g) => g.binding.kind === 'http' && g.binding.path === path);
+    if (same && same.binding.kind === 'http' && same.binding.pathParams.length > 0) {
+      t.verify = { tool: same.name, params: Object.fromEntries(same.binding.pathParams.map((p) => [p, `$input.${p}`])), expect: method === 'DELETE' ? 'missing' : 'exists' };
+    }
+  }
+}
+
 /** Header params that carry auth are handled by the connector's auth, not by the model. */
 const AUTH_HEADER = /^(authorization|x-api-key|api-key|cookie)$/i;
 
@@ -110,6 +133,7 @@ export function importOpenApi(spec: unknown, opts: OpenApiImportOptions): Connec
       });
     }
   }
+  suggestVerifications(tools);
   if (operations === 0) throw new Error('La especificación no tiene operaciones.');
   if (tools.length === 0) throw new Error(`El filtro no deja ninguna de las ${operations} operaciones; revisa include y exclude.`);
   if (tools.length > maxTools) {

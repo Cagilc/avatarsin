@@ -23,7 +23,8 @@ export function trimHistory(history: ChatMessage[], max = MAX_HISTORY): ChatMess
   if (history.length <= max) return history;
   for (let i = history.length - max; i < history.length; i += 1) {
     const m = history[i];
-    if (m?.role === 'user' && m.content.some((b) => b.type === 'text')) return history.slice(i);
+    // Only a real request starts a turn: a user message with tool results (and maybe a check note) must stay with its tool_use.
+    if (m?.role === 'user' && m.content.some((b) => b.type === 'text') && !m.content.some((b) => b.type === 'tool_result')) return history.slice(i);
   }
   return history;
 }

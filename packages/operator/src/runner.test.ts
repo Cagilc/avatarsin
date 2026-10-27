@@ -227,7 +227,9 @@ describe('runOperator · stop, caps and previews', () => {
     calls.length = 0;
     const seen: unknown[] = [];
     const conPreview = defineTool({
-      ...enviar,
+      description: enviar.description,
+      driver: enviar.driver,
+      risk: enviar.risk,
       name: 'enviar_borrador',
       input: z.object({ borradorId: z.string() }),
       summarize: (i: { borradorId: string }) => `Enviar el borrador ${i.borradorId}`,
@@ -249,7 +251,9 @@ describe('runOperator · stop, caps and previews', () => {
 
   it('does not ask for confirmation when the preview cannot be read', async () => {
     const roto = defineTool({
-      ...enviar,
+      description: enviar.description,
+      driver: enviar.driver,
+      risk: enviar.risk,
       name: 'enviar_borrador',
       input: z.object({ borradorId: z.string() }),
       summarize: () => 'Enviar',
@@ -269,5 +273,80 @@ describe('runOperator · stop, caps and previews', () => {
     await runOperator(h.opts);
     expect(asked).toBe(false);
     expect(h.audit[0]).toMatchObject({ outcome: 'error', error: 'No se puede preparar la confirmación: No existe el borrador B-9.' });
+  });
+});
+
+describe('runOperator · seeing the effect of a write', () => {
+  const store = new Map<string, { id: string; tipo: string }>();
+  const leer = defineTool({
+    name: 'leer_expediente',
+    description: 'Lee un expediente',
+    driver: 'platform',
+    risk: 'read',
+    input: z.object({ expedienteId: z.string().min(1) }),
+    summarize: (i) => `Leer expediente ${i.expedienteId}`,
+    execute: async (i) => store.get(i.expedienteId) ?? { error: 'no existe' },
+  });
+  const crear = defineTool({
+    name: 'crear_expediente',
+    description: 'Abre un expediente',
+    driver: 'platform',
+    risk: 'write',
+    input: z.object({ tipo: z.string() }),
+    summarize: (i) => `Abrir expediente de ${i.tipo}`,
+    execute: async (i) => {
+      const e = { id: `EXP-${store.size + 1}`, tipo: i.tipo };
+      store.set(e.id, e);
+      return e;
+    },
+    verify: {
+      tool: 'leer_expediente',
+      params: (_i, out) => ({ expedienteId: out.id }),
+      confirms: (read) => read.ok && !('error' in (read.data as object)),
+      target: () => 'expedientes',
+    },
+  });
+
+  it('reads the record back, audits the read like any other, tells the host and the model', async () => {
+    store.clear();
+    const h = harness([use('crear_expediente', { tipo: 'residencia' }), text('Abierto.')], { tools: [crear, leer] });
+    await runOperator(h.opts);
+    expect(h.events.find((e) => e.type === 'effect')).toEqual({ type: 'effect', id: 'u_crear_expediente', tool: 'crear_expediente', readTool: 'leer_expediente', confirmed: true, summary: 'Comprobado: Leer expediente EXP-1', details: { id: 'EXP-1', tipo: 'residencia' }, target: 'expedientes' });
+    expect(h.audit.map((a) => [a.actionId, a.tool, a.risk, a.outcome])).toEqual([
+      ['u_crear_expediente', 'crear_expediente', 'write', 'ok'],
+      ['u_crear_expediente:verify', 'leer_expediente', 'read', 'ok'],
+    ]);
+    // The model sees the check as a note after the tool results; the result itself stays plain data.
+    const fed = h.provider.requests[1]!.messages.at(-1)!.content;
+    expect(fed[0]).toMatchObject({ type: 'tool_result', content: JSON.stringify({ id: 'EXP-1', tipo: 'residencia' }) });
+    expect(fed.at(-1)).toEqual({ type: 'text', text: '[Comprobación de crear_expediente] Comprobado: Leer expediente EXP-1' });
+  });
+
+  it('says "could not check" without failing the action: read missing, denied by policy, or not matching', async () => {
+    store.clear();
+    const none = harness([use('crear_expediente', { tipo: 'x' }), text('ok')], { tools: [crear] });
+    await runOperator(none.opts);
+    expect(none.events.find((e) => e.type === 'effect')).toMatchObject({ confirmed: false, summary: expect.stringContaining('no está disponible') });
+    expect(none.audit.map((a) => a.outcome)).toEqual(['ok']);
+
+    const denied = harness([use('crear_expediente', { tipo: 'x' }), text('ok')], { tools: [crear, leer], policy: { allow: ['*'], deny: ['leer_expediente'], confirm: ['irreversible'] } });
+    await runOperator(denied.opts);
+    expect(denied.events.find((e) => e.type === 'effect')).toMatchObject({ confirmed: false, summary: expect.stringContaining('la política no permite') });
+
+    const gone = defineTool({ ...crear, execute: async () => ({ id: 'EXP-ghost', tipo: 'x' }) });
+    const mismatch = harness([use('crear_expediente', { tipo: 'x' }), text('ok')], { tools: [gone, leer] });
+    await runOperator(mismatch.opts);
+    expect(mismatch.events.find((e) => e.type === 'effect')).toMatchObject({ confirmed: false, summary: 'No se pudo comprobar: la lectura no coincide con lo esperado' });
+    expect(mismatch.audit.map((a) => [a.tool, a.outcome])).toEqual([['crear_expediente', 'ok'], ['leer_expediente', 'ok']]);
+  });
+
+  it('a read that throws is audited as an error and reported, and the write stays ok', async () => {
+    store.clear();
+    const broken = defineTool({ ...leer, execute: async () => { throw new Error('servicio caído'); } });
+    const h = harness([use('crear_expediente', { tipo: 'x' }), text('ok')], { tools: [crear, broken] });
+    await runOperator(h.opts);
+    expect(h.events.find((e) => e.type === 'effect')).toMatchObject({ confirmed: false, summary: 'No se pudo comprobar: servicio caído' });
+    expect(h.audit.map((a) => [a.tool, a.outcome])).toEqual([['crear_expediente', 'ok'], ['leer_expediente', 'error']]);
+    expect(h.events.filter((e) => e.type === 'tool_result').map((e) => (e as { outcome: string }).outcome)).toEqual(['ok']);
   });
 });

@@ -55,8 +55,10 @@ export function sessionTurns(history: ChatMessage[]): SessionTurn[] {
   const turns: SessionTurn[] = [];
   let current: SessionTurn | null = null;
   for (const message of history) {
+    // A user message that carries tool results continues the turn; its text (what a check saw) is annotation.
+    const continuation = message.role === 'user' && message.content.some((b) => b.type === 'tool_result');
     for (const block of message.content) {
-      if (message.role === 'user' && block.type === 'text') {
+      if (message.role === 'user' && block.type === 'text' && !continuation) {
         const match = CONTEXT_RE.exec(block.text);
         let context: Record<string, unknown> = {};
         if (match?.[1]) {

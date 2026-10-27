@@ -42,6 +42,13 @@ export function platformTools(platform: PlatformClient): AnyTool[] {
     }),
     summarize: (i) => `Abrir expediente de ${i.tipo} para el contacto ${i.contactoId}`,
     execute: (i, ctx) => platform.crearExpediente(i, { id: ctx.principal.id, name: ctx.principal.name }),
+    // Seen to exist: the new record is read back, and the avatar points at the host's case list if it registered one.
+    verify: {
+      tool: 'leer_expediente',
+      params: (_i, out) => ({ expedienteId: out.id }),
+      confirms: (read) => read.ok && !(typeof read.data === 'object' && read.data !== null && 'error' in read.data),
+      target: () => 'expedientes',
+    },
   });
 
   const crearTarea = defineTool({

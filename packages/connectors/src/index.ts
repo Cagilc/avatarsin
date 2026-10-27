@@ -12,6 +12,8 @@ export {
   type ConnectorManifest,
   type ConnectorSource,
   type ConnectorTool,
+  type VerifySpec,
+  verifySchema,
 } from './manifest.ts';
 export { DEFAULT_MAX_TOOLS, importFilterSchema, parseRule, ruleSchema, selected, type ImportFilter, type Operation } from './filter.ts';
 export { RISK_ORDER, lowerThan, suggestHttpRisk, suggestMcpRisk, type McpAnnotations, type RiskSuggestion } from './risk.ts';
@@ -20,4 +22,4 @@ export { importOpenApi, type OpenApiImportOptions } from './openapi.ts';
 export { HttpMcpClient, MCP_PROTOCOL_VERSION, StdioMcpClient, contentToText, type McpCallResult, type McpClient, type McpContent, type McpServerInfo, type McpToolInfo } from './mcp/client.ts';
 export { importMcp, type McpImportOptions } from './mcp/import.ts';
 export { ReviewError, liveTools, refreshConnector, reviewConnector, type RefreshReport, type ToolDecision } from './review.ts';
-export { toolsFromManifest, type RuntimeDeps } from './runtime.ts';
+export { resolveVerifyParams, toolsFromManifest, type RuntimeDeps } from './runtime.ts';

@@ -61,8 +61,33 @@ function authHeaders(manifest: ConnectorManifest, env: RuntimeDeps['env']): Reco
   return a.kind === 'bearer' ? { authorization: `Bearer ${secret}` } : { [a.name]: secret };
 }
 
+/** `$.a.b` reads the write's response, `$input.a` its input, anything else is literal. */
+export function resolveVerifyParams(spec: Record<string, string>, input: unknown, output: unknown): Record<string, unknown> | null {
+  const dig = (root: unknown, path: string): unknown => path.split('.').filter(Boolean).reduce<unknown>((v, key) => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>)[key] : undefined), root);
+  const params: Record<string, unknown> = {};
+  for (const [name, expr] of Object.entries(spec)) {
+    const value = expr.startsWith('$input.') ? dig(input, expr.slice(7)) : expr.startsWith('$.') ? dig(output, expr.slice(2)) : expr;
+    if (value === undefined || value === null) return null;
+    params[name] = value;
+  }
+  return params;
+}
+
+function verification(tool: ConnectorTool): AnyTool['verify'] | undefined {
+  const v = tool.verify;
+  if (!v) return undefined;
+  return {
+    tool: v.tool,
+    params: (input, output) => resolveVerifyParams(v.params, input, output),
+    // A delete is confirmed when the read-back says the item is gone.
+    confirms: (read) => (v.expect === 'missing' ? !read.ok && /respondió 404\b/.test(read.error) : read.ok),
+    ...(v.target ? { target: () => v.target } : {}),
+  };
+}
+
 function httpTool(manifest: ConnectorManifest, tool: ConnectorTool & { risk: Risk }, deps: RuntimeDeps): AnyTool {
   const doFetch = deps.fetch ?? fetch;
+  const verify = verification(tool);
   return defineTool({
     name: tool.name,
     description: `[${manifest.name}] ${tool.description}`,
@@ -70,6 +95,7 @@ function httpTool(manifest: ConnectorManifest, tool: ConnectorTool & { risk: Ris
     risk: tool.risk,
     input: inputFor(tool),
     jsonSchema: tool.inputSchema,
+    ...(verify ? { verify } : {}),
     summarize: (input) => {
       const plan = planHttp(manifest, tool, input);
       return `${manifest.name}: ${plan.method} ${new URL(plan.url).pathname}`;

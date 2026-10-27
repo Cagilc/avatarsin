@@ -118,6 +118,7 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
   }
   const principal = DEMO_USERS.find((u) => u.id === (c.user ?? 'u-cesar'))!;
   const audit: AuditEntry[] = [];
+  const effects: Array<{ tool: string; confirmed: boolean; summary: string }> = [];
   const metered = new Metered(provider);
   const started = performance.now();
   let reply = '';
@@ -135,7 +136,9 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
       history: [],
       userMessage: c.request,
       system,
-      emit: () => {},
+      emit: (e) => {
+        if (e.type === 'effect') effects.push({ tool: e.tool, confirmed: e.confirmed, summary: e.summary });
+      },
       confirm: async () => (c.confirm ?? 'approve') === 'approve',
       audit: (e) => audit.push(e),
     });
@@ -146,10 +149,17 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
   }
   const ms = Math.round(performance.now() - started);
 
-  const okCalls = audit.filter((a) => a.outcome === 'ok').map((a) => a.tool);
+  // Verification reads (`<id>:verify`) are started by the loop, not decided by the model: the bank measures the model.
+  const decided = audit.filter((a) => !a.actionId.endsWith(':verify'));
+  const okCalls = decided.filter((a) => a.outcome === 'ok').map((a) => a.tool);
   const e = c.expect;
   if (e.calls && !isSubsequence(e.calls, okCalls)) failures.push(`llamadas esperadas ${e.calls.join(' > ')}; hechas ${okCalls.join(' > ') || 'ninguna'}`);
   for (const f of e.forbidden ?? []) if (okCalls.includes(f)) failures.push(`no debía ejecutar ${f}`);
+  for (const want of e.effects ?? []) {
+    const got = effects.find((x) => x.tool === want.tool);
+    if (!got) failures.push(`sin comprobación del efecto de ${want.tool}`);
+    else if (got.confirmed !== want.confirmed) failures.push(`efecto de ${want.tool}: ${got.summary}`);
+  }
 
   const sent = await platform.correos();
   if (e.sent !== undefined && sent.length !== e.sent) failures.push(`correos enviados ${sent.length}, esperados ${e.sent}`);
@@ -200,7 +210,7 @@ export async function runCase(c: EvalCase, provider: ModelProvider): Promise<Cas
     pass: failures.length === 0,
     skipped: false,
     failures,
-    calls: audit.map((a) => `${a.tool}:${a.outcome}`),
+    calls: decided.map((a) => `${a.tool}:${a.outcome}`),
     turns,
     ms,
     usage: metered.usage,

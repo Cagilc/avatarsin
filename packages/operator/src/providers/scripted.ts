@@ -10,10 +10,13 @@ interface PlannedCall {
   input: (results: Record<string, unknown>) => unknown;
 }
 
+/** A user message that carries tool results is a continuation of the request; any text in it is annotation. */
+const isRequest = (m: ChatMessage): boolean => m.role === 'user' && !m.content.some((b) => b.type === 'tool_result');
+
 function lastUserText(messages: ChatMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const m = messages[i];
-    if (!m || m.role !== 'user') continue;
+    if (!m || !isRequest(m)) continue;
     const text = m.content.find((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text');
     if (text) return text.text.replace(/^\[Contexto de pantalla\][^\n]*\n\n/, '');
   }
@@ -23,7 +26,7 @@ function lastUserText(messages: ChatMessage[]): string {
 function screenContext(messages: ChatMessage[]): Record<string, unknown> {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const m = messages[i];
-    if (!m || m.role !== 'user') continue;
+    if (!m || !isRequest(m)) continue;
     const text = m.content.find((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text');
     const match = text?.text.match(/^\[Contexto de pantalla\] (\{.*\})\n\n/);
     if (match?.[1]) {
@@ -43,7 +46,7 @@ function exchange(messages: ChatMessage[]): { calls: string[]; results: Record<s
   let start = messages.length - 1;
   while (start >= 0) {
     const m = messages[start];
-    if (m?.role === 'user' && m.content.some((b) => b.type === 'text')) break;
+    if (m && isRequest(m) && m.content.some((b) => b.type === 'text')) break;
     start -= 1;
   }
   const calls: string[] = [];

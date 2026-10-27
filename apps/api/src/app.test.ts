@@ -89,7 +89,7 @@ describe('Vex Core HTTP', () => {
     expect(events.at(-1)).toMatchObject({ type: 'done' });
     expect((events.at(-1) as { reply: string }).reply).toContain('Correo enviado a laura.perez@ejemplo.es');
     expect(await platform.correos()).toHaveLength(1);
-    expect(store.auditEntries.map((e) => `${e.tool}:${e.outcome}`)).toEqual(['buscar:ok', 'crear_expediente:ok', 'crear_tarea:ok', 'redactar_correo:ok', 'enviar_correo:ok']);
+    expect(store.auditEntries.map((e) => `${e.tool}:${e.outcome}`)).toEqual(['buscar:ok', 'crear_expediente:ok', 'leer_expediente:ok', 'crear_tarea:ok', 'redactar_correo:ok', 'enviar_correo:ok']); // leer_expediente: the new case read back (verify)
     expect(store.auditEntries.at(-1)?.details).toMatchObject({ para: 'laura.perez@ejemplo.es' });
   });
 

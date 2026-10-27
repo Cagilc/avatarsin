@@ -33,6 +33,8 @@ export interface Expectations {
   auditPrincipal?: string;
   /** State of the appointments connector afterwards (cases with `connectors: ['citas']`). */
   citas?: { creadas?: number; inicio?: string; recordatorios?: number; canal?: 'sms' | 'email' };
+  /** Writes whose effect must have been read back (`effect` events), and whether it was confirmed. */
+  effects?: Array<{ tool: string; confirmed: boolean }>;
 }
 
 export interface EvalCase {
@@ -73,6 +75,8 @@ const BUILT_IN: EvalCase[] = [
       tareas: [{ equipo: 'extranjeria' }],
       sentTo: ['laura.perez@ejemplo.es'],
       maxToolCalls: 8,
+      // The new case is read back after being opened; the model is told, the page gets an `effect`.
+      effects: [{ tool: 'crear_expediente', confirmed: true }],
     },
   },
   {

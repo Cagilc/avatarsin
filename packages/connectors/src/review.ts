@@ -1,5 +1,5 @@
 import type { Risk } from '@vex/operator';
-import type { ConnectorManifest, ConnectorTool } from './manifest.ts';
+import type { ConnectorManifest, ConnectorTool, VerifySpec } from './manifest.ts';
 import { lowerThan } from './risk.ts';
 
 export interface ToolDecision {
@@ -9,6 +9,8 @@ export interface ToolDecision {
   enabled: boolean;
   /** Mandatory when `risk` is lower than the suggested one. */
   lowerRiskReason?: string;
+  /** How to check the effect afterwards; null clears the importer's suggestion. Undefined leaves it. */
+  verify?: VerifySpec | null;
 }
 
 export class ReviewError extends Error {}
@@ -25,6 +27,11 @@ export function reviewConnector(manifest: ConnectorManifest, decisions: ToolDeci
     if (lowerThan(d.risk, tool.suggestedRisk) && !d.lowerRiskReason?.trim()) {
       throw new ReviewError(`${d.name}: has elegido "${d.risk}" por debajo de lo sugerido ("${tool.suggestedRisk}"); explica por qué.`);
     }
+    if (d.verify) {
+      const read = byName.get(d.verify.tool);
+      if (!read) throw new ReviewError(`${d.name}: la comprobación usa ${d.verify.tool}, que no es una herramienta de ${manifest.id}.`);
+      if (read.suggestedRisk !== 'read') throw new ReviewError(`${d.name}: la comprobación tiene que ser una lectura; ${d.verify.tool} no lo es.`);
+    }
   }
   const at = now.toISOString();
   const decided = new Map(decisions.map((d) => [d.name, d]));
@@ -32,7 +39,7 @@ export function reviewConnector(manifest: ConnectorManifest, decisions: ToolDeci
     const d = decided.get(t.name);
     if (!d) return t;
     const lower = lowerThan(d.risk, t.suggestedRisk) ? { lowerRiskReason: d.lowerRiskReason!.trim() } : {};
-    return { ...t, risk: d.risk, enabled: d.enabled, review: { by: reviewer, at, ...lower } };
+    return { ...t, risk: d.risk, enabled: d.enabled, review: { by: reviewer, at, ...lower }, ...(d.verify !== undefined ? { verify: d.verify } : {}) };
   });
   return { ...manifest, tools, updatedAt: at };
 }

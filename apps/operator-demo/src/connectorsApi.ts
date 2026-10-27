@@ -14,6 +14,8 @@ export interface ConnectorToolView {
   risk: Risk | null;
   enabled: boolean;
   review: { by: string; at: string; lowerRiskReason?: string } | null;
+  /** How the effect is read back afterwards, when the importer or the review set one. */
+  verify?: { tool: string; params: Record<string, string>; expect: 'exists' | 'missing'; target?: string } | null;
 }
 
 export interface ConnectorView {

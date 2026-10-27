@@ -102,7 +102,8 @@ export interface OperatorStore {
 const DEFAULT_AUDIT_LIMIT = 500;
 
 /** For tests and local demos. Copies on save so it behaves like real persistence. */
-const countTurns = (history: ChatMessage[]) => history.filter((m) => m.role === 'user' && m.content.some((b) => b.type === 'text')).length;
+// A user message that carries tool results continues a turn (its text is what a check saw), it does not start one.
+const countTurns = (history: ChatMessage[]) => history.filter((m) => m.role === 'user' && m.content.some((b) => b.type === 'text') && !m.content.some((b) => b.type === 'tool_result')).length;
 
 export class MemoryStore implements OperatorStore {
   readonly auditEntries: AuditEntry[] = [];

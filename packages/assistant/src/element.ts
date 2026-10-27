@@ -42,6 +42,8 @@ export interface Step {
   risk: ActionRequest['risk'];
   outcome: ActionOutcome | 'pending' | 'confirming';
   detail?: string;
+  /** What the read-back saw after a write: confirmed, or why it could not be checked. */
+  effect?: { confirmed: boolean; summary: string };
 }
 
 export interface Turn {
@@ -470,6 +472,31 @@ export class VexAssistantElement extends HTMLElement {
     (step.advanceOn === 'next' ? next : skip).focus({ preventScroll: true });
   }
 
+  /**
+   * A confirmed effect on a registered element: the avatar turns towards it and a halo rests on it
+   * for a moment. Nothing is captured or clicked; a running tour keeps its own stage.
+   */
+  private pointAt(id: string): void {
+    const target = this.registry.get(id);
+    if (!target || this.tour) return;
+    const anchor = target.getBoundingClientRect();
+    if (anchor.width === 0 && anchor.height === 0) return;
+    const pad = 6;
+    const stage = h('div', { class: 'tour-stage', 'data-effect': id });
+    const halo = h('div', { class: 'tour-highlight' });
+    Object.assign(halo.style, { left: `${anchor.left - pad}px`, top: `${anchor.top - pad}px`, width: `${anchor.width + 2 * pad}px`, height: `${anchor.height + 2 * pad}px` });
+    stage.appendChild(halo);
+    this.shadow.appendChild(stage);
+    const from = this.els.avatar.getBoundingClientRect();
+    const dx = anchor.left + anchor.width / 2 - (from.left + from.width / 2);
+    const dy = anchor.top + anchor.height / 2 - (from.top + from.height / 2);
+    this.avatarEl?.setAttribute('aim', String(Math.round((Math.atan2(dy, dx) * 180) / Math.PI)));
+    window.setTimeout(() => {
+      stage.remove();
+      if (!this.tour) this.avatarEl?.removeAttribute('aim');
+    }, 1600);
+  }
+
   /** Puts highlight, mascot and bubble around the current target (or by the panel's avatar). */
   private placeTour(): void {
     const active = this.tour;
@@ -597,6 +624,14 @@ export class VexAssistantElement extends HTMLElement {
           turn.notices.push(event.message);
           this.emit('vex-notice', { message: event.message });
           break;
+        case 'effect': {
+          const step = turn.steps.find((s) => s.id === event.id);
+          if (step) step.effect = { confirmed: event.confirmed, summary: event.summary };
+          // The host refreshes what changed; the avatar points at it when the page registered it.
+          this.emit('vex-effect', { id: event.id, tool: event.tool, readTool: event.readTool, confirmed: event.confirmed, summary: event.summary, details: event.details, target: event.target });
+          if (event.confirmed && event.target) this.pointAt(event.target);
+          break;
+        }
         case 'progress':
           break;
       }
@@ -737,6 +772,7 @@ export class VexAssistantElement extends HTMLElement {
         for (const s of turn.steps) {
           const text = h('span', { class: 'step-text' }, s.summary);
           if (s.outcome !== 'ok' && s.outcome !== 'pending' && s.detail && s.detail !== s.summary) text.appendChild(h('em', {}, ` · ${s.detail}`));
+          if (s.effect) text.appendChild(h('em', { class: `step-effect ${s.effect.confirmed ? 'is-confirmed' : 'is-unchecked'}` }, ` · ${s.effect.summary}`));
           ol.appendChild(h('li', { class: `step is-${s.outcome}` }, h('span', { class: 'step-dot', 'aria-hidden': 'true' }), text, h('span', { class: 'step-state' }, OUTCOME_LABEL[s.outcome])));
         }
         box.appendChild(ol);

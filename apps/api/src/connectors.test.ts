@@ -127,6 +127,8 @@ describe('connectors in Vex Core', () => {
     expect(crear.at(-1)).toMatchObject({ type: 'done', reply: expect.stringContaining('Hecho (citas_crear_cita)') });
     const cita = citas.estado().citas.at(-1)!;
     expect(cita).toMatchObject({ cliente: 'Laura Pérez', estado: 'confirmada' });
+    // The booking is read back through the suggested verification and the page is told.
+    expect(crear.find((e) => e.type === 'effect')).toMatchObject({ tool: 'citas_crear_cita', readTool: 'citas_obtener_cita', confirmed: true, summary: `Comprobado: Agenda de citas: GET /citas/${cita.id}`, details: { id: cita.id } });
 
     // The system prompt lists the connector and tells the model to read its guide first.
     expect(spy.last?.system).toContain('- citas: Agenda de citas');

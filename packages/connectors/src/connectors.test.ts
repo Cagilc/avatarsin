@@ -8,7 +8,7 @@ import { StdioMcpClient } from './mcp/client.ts';
 import { refreshConnector, reviewConnector, liveTools, ReviewError, type ToolDecision } from './review.ts';
 import { suggestHttpRisk, suggestMcpRisk } from './risk.ts';
 import { resolveRefs, validateJson } from './jsonSchema.ts';
-import { toolsFromManifest } from './runtime.ts';
+import { resolveVerifyParams, toolsFromManifest } from './runtime.ts';
 import type { ConnectorManifest } from './manifest.ts';
 
 const NOW = new Date('2026-10-24T10:00:00.000Z');
@@ -98,6 +98,19 @@ describe('OpenAPI import', () => {
     const cancelar = draft.tools.find((t) => t.name === 'citas_cancelar_cita')!;
     expect(cancelar.binding).toMatchObject({ method: 'DELETE', pathParams: ['id'] });
     expect(cancelar.inputSchema).toMatchObject({ required: ['id'] });
+  });
+
+  it('suggests how to see the effect of a write when the paths make it obvious', () => {
+    const by = new Map(draft.tools.map((t) => [t.name, t.verify]));
+    expect(by.get('citas_crear_cita')).toEqual({ tool: 'citas_obtener_cita', params: { id: '$.id' }, expect: 'exists' });
+    expect(by.get('citas_cancelar_cita')).toEqual({ tool: 'citas_obtener_cita', params: { id: '$input.id' }, expect: 'missing' });
+    expect(by.get('citas_enviar_recordatorio')).toBeUndefined();
+    expect(by.get('citas_listar_huecos')).toBeUndefined();
+    // The review can change or clear it; only a read of the same connector is accepted.
+    const cleared = reviewConnector(draft, [{ name: 'citas_crear_cita', risk: 'write', enabled: true, verify: null }], 'u-cesar', NOW);
+    expect(cleared.tools.find((t) => t.name === 'citas_crear_cita')!.verify).toBeNull();
+    expect(() => reviewConnector(draft, [{ name: 'citas_crear_cita', risk: 'write', enabled: true, verify: { tool: 'citas_cancelar_cita', params: {}, expect: 'exists' } }], 'u-cesar', NOW)).toThrow(/tiene que ser una lectura/);
+    expect(() => reviewConnector(draft, [{ name: 'citas_crear_cita', risk: 'write', enabled: true, verify: { tool: 'otra_cosa', params: {}, expect: 'exists' } }], 'u-cesar', NOW)).toThrow(/no es una herramienta/);
   });
 
   it('rejects documents it cannot use', () => {
@@ -222,6 +235,32 @@ describe('runtime against the appointments API', () => {
     const t = tools();
     expect(t('citas_crear_cita')).toMatchObject({ driver: 'api', risk: 'write', jsonSchema: { type: 'object' } });
     expect(t('citas_enviar_recordatorio').risk).toBe('irreversible');
+  });
+
+  it('the suggested verification reads the booking back, and a cancellation confirms on 404', async () => {
+    const t = tools();
+    const crear = t('citas_crear_cita');
+    const huecos = (await t('citas_listar_huecos').execute({ fecha: '2026-10-29' }, ctx)) as { huecos: string[] };
+    const input = { body: { cliente: 'Pau', email: 'pau@ejemplo.es', inicio: huecos.huecos[1]!, motivo: 'Consulta' } };
+    const cita = (await crear.execute(input, ctx)) as { id: string };
+    const params = crear.verify!.params(input, cita)!;
+    expect(params).toEqual({ id: cita.id });
+    const read = { ok: true as const, data: await t('citas_obtener_cita').execute(params, ctx) };
+    expect(crear.verify!.confirms!(read, input, cita)).toBe(true);
+    expect(resolveVerifyParams({ id: '$.id', email: '$input.body.email', canal: 'sms' }, input, cita)).toEqual({ id: cita.id, email: 'pau@ejemplo.es', canal: 'sms' });
+    expect(resolveVerifyParams({ id: '$.nope' }, input, cita)).toBeNull();
+
+    // A delete expects the read-back to say 404. This API keeps a cancelled booking (estado: cancelada),
+    // so the suggestion reports "could not check" here, honestly; the review can change the expectation.
+    const cancelar = t('citas_cancelar_cita');
+    expect(cancelar.verify).toMatchObject({ tool: 'citas_obtener_cita', params: expect.any(Function) });
+    expect(cancelar.verify!.params({ id: cita.id }, undefined)).toEqual({ id: cita.id });
+    expect(cancelar.verify!.confirms!({ ok: false, error: 'Agenda de citas respondió 404: no existe' }, { id: cita.id }, undefined)).toBe(true);
+    expect(cancelar.verify!.confirms!({ ok: false, error: 'Agenda de citas respondió 500: caído' }, { id: cita.id }, undefined)).toBe(false);
+    await cancelar.execute({ id: cita.id }, ctx);
+    const after = { ok: true as const, data: await t('citas_obtener_cita').execute({ id: cita.id }, ctx) };
+    expect(after.data).toMatchObject({ estado: 'cancelada' });
+    expect(cancelar.verify!.confirms!(after, { id: cita.id }, undefined)).toBe(false);
   });
 
   it('books, previews and sends a reminder against the live service', async () => {

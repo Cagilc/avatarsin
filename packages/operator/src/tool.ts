@@ -32,10 +32,30 @@ export interface ToolDefinition<I, O = unknown> {
    */
   preview?: (input: I, ctx: ToolContext) => Promise<Record<string, unknown>>;
   execute: (input: I, ctx: ToolContext) => Promise<O>;
+  /**
+   * How to see that the action took effect: a read tool to call afterwards. The runner runs it
+   * like any read (policy, validation, audit) and reports what it saw as an `effect` event; a
+   * read that fails never turns the action into a failure, it only says "could not check".
+   */
+  verify?: ToolVerification<I, O>;
+}
+
+export type VerifyRead = { ok: true; data: unknown } | { ok: false; error: string };
+
+// Method signatures on purpose: a tool typed with its own output must still fit `AnyTool`.
+export interface ToolVerification<I, O> {
+  /** Name of the read tool that confirms the effect. Must be available and allowed by the policy. */
+  tool: string;
+  /** Input for that read, from this call's input and output. Null = nothing to check. */
+  params(input: I, output: O): Record<string, unknown> | null;
+  /** Judges the read. Default: the read succeeded. A delete confirms when the read says "not found". */
+  confirms?(read: VerifyRead, input: I, output: O): boolean;
+  /** Registered page element (data-vex-id) the avatar points at when the effect shows. */
+  target?(input: I, output: O): string | undefined;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: registries hold tools of every input type.
-export type AnyTool = ToolDefinition<any, unknown>;
+export type AnyTool = ToolDefinition<any, any>;
 
 export function defineTool<I, O = unknown>(def: ToolDefinition<I, O>): ToolDefinition<I, O> {
   return def;

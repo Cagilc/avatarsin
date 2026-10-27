@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { authSchema, importFilterSchema } from '@vex/connectors';
+import { authSchema, importFilterSchema, verifySchema } from '@vex/connectors';
 import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
 import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage } from './approvals.ts';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
@@ -105,7 +105,7 @@ const importMcpBody = z.discriminatedUnion('transport', [
   z.object({ id: idSchema, name: z.string().min(1).max(80).optional(), transport: z.literal('http'), url: z.string().url() }),
 ]);
 const reviewBody = z.object({
-  decisions: z.array(z.object({ name: z.string().min(1), risk: riskSchema, enabled: z.boolean(), lowerRiskReason: z.string().max(500).optional() })),
+  decisions: z.array(z.object({ name: z.string().min(1), risk: riskSchema, enabled: z.boolean(), lowerRiskReason: z.string().max(500).optional(), verify: verifySchema.nullable().optional() })),
   guide: z.string().max(4000).optional(),
   auth: authSchema.optional(),
   baseUrl: z.string().url().optional(),

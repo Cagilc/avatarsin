@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { actionOutcomeSchema, actionRequestSchema } from './action.ts';
+import { actionOutcomeSchema, actionRequestSchema, toolNameSchema } from './action.ts';
 
 /**
  * What the operator is doing. The host's "director" maps phases to avatar states
@@ -42,5 +42,22 @@ export const operatorEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancelled') }),
   /** Something the host should show the person before the reply (a usage cap reached, the AI paused). */
   z.object({ type: z.literal('notice'), message: z.string().min(1) }),
+  /**
+   * What a write action left behind, read back from the system of record after it ran: `confirmed`
+   * when the read agrees, otherwise "could not check" with the reason. `target` is a registered page
+   * element the avatar may point at; the host refreshes that part of its screen.
+   */
+  z.object({
+    type: z.literal('effect'),
+    /** The action that was checked. */
+    id: z.string().min(1),
+    tool: toolNameSchema,
+    /** The read tool used. */
+    readTool: toolNameSchema,
+    confirmed: z.boolean(),
+    summary: z.string().min(1),
+    details: z.unknown().optional(),
+    target: z.string().min(1).optional(),
+  }),
 ]);
 export type OperatorEvent = z.infer<typeof operatorEventSchema>;

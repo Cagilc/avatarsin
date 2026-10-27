@@ -3,7 +3,7 @@ import type { AuditEntry } from './schema/audit.ts';
 import type { OperatorEvent } from './schema/events.ts';
 import { decide, type PermissionPolicy } from './schema/policy.ts';
 import type { ChatMessage, Completion, ContentBlock, ModelProvider } from './provider.ts';
-import { toToolSpec, type AnyTool, type ToolContext } from './tool.ts';
+import { toToolSpec, type AnyTool, type ToolContext, type VerifyRead } from './tool.ts';
 
 export interface RunOptions {
   sessionId: string;
@@ -103,6 +103,66 @@ export async function runOperator(opts: RunOptions): Promise<RunResult> {
   let reply = '';
   let toolCalls = 0;
 
+  const MAX_EFFECT_CHARS = 2000;
+  /**
+   * After a write ran: call the read the tool declared, audit it like any read, and tell the host
+   * what it saw. Nothing here changes the action's outcome; the model gets the check as a note
+   * after the tool results, so its reply can say "comprobado".
+   */
+  const checkEffect = async (tool: AnyTool, input: unknown, output: unknown, action: ActionRequest, notes: string[]): Promise<void> => {
+    const verify = tool.verify;
+    if (!verify) return;
+    let target: string | undefined;
+    try {
+      target = verify.target?.(input, output);
+    } catch {
+      target = undefined;
+    }
+    const report = (confirmed: boolean, summary: string, details?: unknown) => {
+      const shown = details === undefined ? undefined : JSON.stringify(details).length > MAX_EFFECT_CHARS ? `${JSON.stringify(details).slice(0, MAX_EFFECT_CHARS)}…` : details;
+      emit({ type: 'effect', id: action.id, tool: action.tool, readTool: verify.tool, confirmed, summary, ...(shown !== undefined ? { details: shown } : {}), ...(target ? { target } : {}) });
+      // Told to the model as text after the tool results, so each result stays the plain data the tool returned.
+      notes.push(`[Comprobación de ${action.tool}] ${summary}`);
+    };
+    const read = byName.get(verify.tool);
+    if (!read) return report(false, `No se pudo comprobar: la herramienta de lectura ${verify.tool} no está disponible.`);
+    if (decide(policy, read) !== 'allow') return report(false, `No se pudo comprobar: la política no permite ${read.name} sin confirmación.`);
+    let params: Record<string, unknown> | null;
+    try {
+      params = verify.params(input, output);
+    } catch (err) {
+      return report(false, `No se pudo comprobar: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!params) return report(false, 'No se pudo comprobar: la acción no devolvió con qué comprobar.');
+    const parsed = read.input.safeParse(params);
+    if (!parsed.success) return report(false, `No se pudo comprobar: parámetros inválidos para ${read.name}.`);
+    const started = now();
+    let outcome: VerifyRead;
+    try {
+      outcome = { ok: true, data: await abortable(read.execute(parsed.data, toolCtx), signal) };
+    } catch (err) {
+      if (err instanceof Cancelled) throw err;
+      outcome = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const summary = read.summarize(parsed.data);
+    opts.audit({
+      ts: new Date(now()).toISOString(),
+      sessionId,
+      principal,
+      actionId: `${action.id}:verify`,
+      tool: read.name,
+      driver: read.driver,
+      risk: read.risk,
+      params: parsed.data as Record<string, unknown>,
+      summary: `Comprobar: ${summary}`,
+      outcome: outcome.ok ? 'ok' : 'error',
+      ...(outcome.ok ? {} : { error: outcome.error }),
+      durationMs: Math.max(0, now() - started),
+    });
+    const confirmed = verify.confirms ? verify.confirms(outcome, input, output) : outcome.ok;
+    report(confirmed, confirmed ? `Comprobado: ${summary}` : `No se pudo comprobar: ${outcome.ok ? 'la lectura no coincide con lo esperado' : outcome.error}`, outcome.ok ? outcome.data : undefined);
+  };
+
   const stop = (): RunResult => {
     emit({ type: 'phase', phase: 'idle' });
     emit({ type: 'cancelled' });
@@ -146,6 +206,7 @@ export async function runOperator(opts: RunOptions): Promise<RunResult> {
     }
 
     const results: ContentBlock[] = [];
+    const notes: string[] = [];
     let cancelledAt = -1;
 
     for (let i = 0; i < toolUses.length; i += 1) {
@@ -249,11 +310,23 @@ export async function runOperator(opts: RunOptions): Promise<RunResult> {
       emit({ type: 'phase', phase: 'working' });
       emit({ type: 'progress', step: i + 1, total: toolUses.length, label: action.summary });
       emit({ type: 'tool_call', action });
+      let output: { ok: true; data: unknown } | null = null;
       try {
         const data = await tool.execute(parsed.data, toolCtx);
         finish('ok', action, data);
+        output = { ok: true, data };
       } catch (err) {
         finish('error', action, undefined, err instanceof Error ? err.message : String(err));
+      }
+      if (output) {
+        try {
+          await checkEffect(tool, parsed.data, output.data, action, notes);
+        } catch (err) {
+          if (!(err instanceof Cancelled) && !signal?.aborted) throw err;
+          // The write is done and audited; what did not run yet is closed below.
+          cancelledAt = i + 1;
+          break;
+        }
       }
     }
 
@@ -286,9 +359,12 @@ export async function runOperator(opts: RunOptions): Promise<RunResult> {
         emit({ type: 'tool_result', id: action.id, outcome: 'cancelled', summary: 'Detenido por el usuario.' });
         results.push({ type: 'tool_result', toolUseId: action.id, content: 'ERROR (cancelled): Detenido por el usuario.', isError: true });
       }
+      if (notes.length) results.push({ type: 'text', text: notes.join('\n') });
       history.push({ role: 'user', content: results });
       return stop();
     }
+    // Tool results first (the API wants them at the head of the message), then what the checks saw.
+    if (notes.length) results.push({ type: 'text', text: notes.join('\n') });
     history.push({ role: 'user', content: results });
   }
 
