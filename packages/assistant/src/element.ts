@@ -1,18 +1,33 @@
-import type { ActionOutcome, ActionRequest, Phase, Principal, QuickAction, TourStep } from '@vex/operator';
+import type { ActionOutcome, ActionRequest, DemoScript, Phase, Principal, QuickAction, TourStep } from '@vex/operator';
 import type { StateName } from '@vexstudio/format';
-import { OperatorClient, type OperatorInfo, type StreamEvent, type VisibleAnnouncement, type VisibleTour } from './client.ts';
+import { OperatorClient, type OperatorInfo, type PresenterSpend, type StreamEvent, type VisibleAnnouncement, type VisibleTour } from './client.ts';
 import { Director, PHASE_LABEL } from './director.ts';
 import { ElementRegistry } from './registry.ts';
 import { STYLES } from './styles.ts';
 import { TourRun, type TourEvent } from './tour.ts';
 
-/** What the panel keeps while a tour is on: its engine, the stage it draws on, and how to undo it. */
+/** A tour step or a demo scene: what the avatar says and where it points, and how the walk moves on. */
+interface WalkStep {
+  target?: string | undefined;
+  say: string;
+  pose: TourStep['pose'];
+  advanceOn?: TourStep['advanceOn'] | undefined;
+  /** A quick action the presenter fires on demand (scenes only). */
+  action?: string | undefined;
+  /** For the presenter's eyes (scenes only). */
+  notes?: string | undefined;
+}
+
+/** What the panel keeps while a tour or a demo script is on: its engine, the stage it draws on, and how to undo it. */
 interface ActiveTour {
-  run: TourRun;
+  kind: 'tour' | 'script';
+  run: TourRun<WalkStep>;
   stage: HTMLDivElement;
   highlight: HTMLDivElement;
   bubble: HTMLDivElement;
   mascot: HTMLDivElement;
+  /** The presenter's strip (scripts only): scene, notes, keys, cost. */
+  bar: HTMLDivElement | null;
   target: Element | null;
   /** Listeners on the current target (click / input) and on the window. */
   undo: Array<() => void>;
@@ -20,6 +35,13 @@ interface ActiveTour {
 }
 
 const MASCOT_PX = 96;
+
+/** "coste: 1.240 tokens hoy · 0,03 USD este mes", as the spend meter counts it. */
+function formatSpend(s: PresenterSpend): string {
+  const tokens = s.today.tokens.toLocaleString('es-ES');
+  const usd = s.month.usd.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return `coste: ${tokens} tokens hoy${s.today.cap ? ` de ${s.today.cap.toLocaleString('es-ES')}` : ''} · ${usd} USD este mes${s.month.cap ? ` de ${s.month.cap}` : ''}`;
+}
 
 /**
  * <vex-assistant api="https://vex.example">
@@ -91,7 +113,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, 
 }
 
 export class VexAssistantElement extends HTMLElement {
-  static observedAttributes = ['api', 'demo-user', 'avatar'];
+  static observedAttributes = ['api', 'demo-user', 'avatar', 'presenter'];
 
   /** Returns the user's session token for Vex Core. Set by the host; never an attribute. */
   getToken: (() => Promise<string>) | null = null;
@@ -103,6 +125,8 @@ export class VexAssistantElement extends HTMLElement {
   private news: VisibleAnnouncement[] = [];
   private actions: QuickAction[] = [];
   private tourList: VisibleTour[] = [];
+  /** Demo scripts, only with the `presenter` attribute and the host's feature on. */
+  private scriptList: DemoScript[] = [];
   private tour: ActiveTour | null = null;
   /** Tours the person said "not now" to, for this page only. */
   private readonly laterTours = new Set<string>();
@@ -327,10 +351,11 @@ export class VexAssistantElement extends HTMLElement {
     if (!client) return;
     const features = info.host.features;
     try {
-      [this.news, this.actions, this.tourList] = await Promise.all([
+      [this.news, this.actions, this.tourList, this.scriptList] = await Promise.all([
         features?.announcements ? client.announcements() : Promise.resolve([]),
         features?.quickActions ? client.quickActions() : Promise.resolve([]),
         features?.tours ? client.tours() : Promise.resolve([]),
+        features?.presenter && this.hasAttribute('presenter') ? client.scripts() : Promise.resolve([]),
       ]);
     } catch (err) {
       this.emit('vex-error', { message: `Novedades: ${err instanceof Error ? err.message : String(err)}` });
@@ -391,19 +416,49 @@ export class VexAssistantElement extends HTMLElement {
   async startTour(id: string): Promise<void> {
     const tour = this.tourList.find((t) => t.id === id);
     if (!tour) return;
+    this.startWalk('tour', { id: tour.id, title: tour.title, steps: tour.steps });
+  }
+
+  /** The demo scripts this presenter may run (`presenter` attribute and the host's feature on). */
+  get scripts(): DemoScript[] {
+    return this.scriptList;
+  }
+
+  /**
+   * Starts a demo script: the presenter moves with the keyboard (→ next, ← back, Enter runs the
+   * scene's action, Esc leaves) or the strip's buttons; nothing advances by itself and no model is
+   * involved unless a scene's action is a prompt.
+   */
+  async startScript(id: string): Promise<void> {
+    const script = this.scriptList.find((s) => s.id === id);
+    if (!script) return;
+    this.startWalk('script', { id: script.id, title: script.title, steps: script.scenes });
+  }
+
+  private startWalk(kind: ActiveTour['kind'], walk: { id: string; title: string; steps: WalkStep[] }): void {
     if (this.tour) this.tour.run.skip();
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const stage = h('div', { class: `tour-stage${reduced ? ' reduced' : ''}`, 'data-tour': tour.id });
+    const stage = h('div', { class: `tour-stage${reduced ? ' reduced' : ''}`, [kind === 'tour' ? 'data-tour' : 'data-script']: walk.id });
     const highlight = h('div', { class: 'tour-highlight', hidden: '' });
-    const bubble = h('div', { class: 'tour-bubble', role: 'dialog', 'aria-live': 'polite', 'aria-label': tour.title });
+    const bubble = h('div', { class: 'tour-bubble', role: 'dialog', 'aria-live': 'polite', 'aria-label': walk.title });
     const mascot = h('div', { class: 'tour-mascot', hidden: '' });
-    stage.append(highlight, mascot, bubble);
+    const bar = kind === 'script' ? h('div', { class: 'presenter-bar', role: 'toolbar', 'aria-label': 'Presentador' }) : null;
+    stage.append(highlight, mascot, bubble, ...(bar ? [bar] : []));
     this.shadow.appendChild(stage);
-    const active: ActiveTour = { run: new TourRun(tour, { exists: (t) => this.registry.get(t) !== undefined, onEvent: (e) => this.onTourEvent(e) }), stage, highlight, bubble, mascot, target: null, undo: [], reduced };
+    const active: ActiveTour = { kind, run: new TourRun<WalkStep>(walk, { exists: (t) => this.registry.get(t) !== undefined, onEvent: (e) => this.onTourEvent(e) }), stage, highlight, bubble, mascot, bar, target: null, undo: [], reduced };
     this.tour = active;
     const reposition = () => this.placeTour();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') active.run.skip();
+      if (e.key === 'Escape') return active.run.skip();
+      if (kind !== 'script') return;
+      // The presenter's keys, unless they are typing somewhere.
+      const typing = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+      if (typing) return;
+      if (e.key === 'ArrowRight') active.run.next();
+      else if (e.key === 'ArrowLeft') active.run.back();
+      else if (e.key === 'Enter') void this.runSceneAction(active);
+      else return;
+      e.preventDefault();
     };
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
@@ -413,22 +468,82 @@ export class VexAssistantElement extends HTMLElement {
       window.removeEventListener('resize', reposition);
       window.removeEventListener('keydown', onKey);
     });
-    this.emit('vex-tour', { id: tour.id, event: 'start' });
+    this.emit(kind === 'tour' ? 'vex-tour' : 'vex-script', { id: walk.id, event: 'start' });
     active.run.start();
+    if (bar) void this.renderPresenterBar(active);
   }
 
-  private onTourEvent(event: TourEvent): void {
+  /** Fires the current scene's quick action, through the same loop as the button. */
+  private async runSceneAction(active: ActiveTour): Promise<void> {
+    const action = active.run.current?.action;
+    if (!action || this.busy) return;
+    this.emit('vex-script', { id: active.run.tour.id, event: 'action', index: active.run.index, action });
+    await this.runQuickAction(action);
+    if (this.tour === active) await this.renderPresenterBar(active);
+  }
+
+  /** The presenter's strip: where they are, their notes, the keys, and what the model has cost so far. */
+  private async renderPresenterBar(active: ActiveTour): Promise<void> {
+    const bar = active.bar;
+    if (!bar) return;
+    const step = active.run.current;
+    const index = active.run.index;
+    const of = active.run.tour.steps.length;
+    const back = h('button', { type: 'button', class: 'btn' }, '← Anterior');
+    back.addEventListener('click', () => active.run.back());
+    const next = h('button', { type: 'button', class: 'btn primary' }, index === of - 1 ? 'Terminar' : 'Siguiente →');
+    next.addEventListener('click', () => active.run.next());
+    const run = h('button', { type: 'button', class: 'btn', ...(step?.action ? {} : { disabled: '' }) }, 'Ejecutar (Enter)');
+    run.addEventListener('click', () => void this.runSceneAction(active));
+    const leave = h('button', { type: 'button', class: 'btn' }, 'Salir (Esc)');
+    leave.addEventListener('click', () => active.run.skip());
+    const buttons = [back, next, run, leave];
+    if (this.who?.role === 'admin') {
+      const reset = h('button', { type: 'button', class: 'btn danger', 'data-action': 'reset' }, 'Reiniciar demo');
+      reset.addEventListener('click', () => void this.presenterReset(active));
+      buttons.push(reset);
+    }
+    const cost = h('span', { class: 'presenter-cost', 'aria-live': 'polite' }, 'coste: …');
+    bar.replaceChildren(
+      h('span', { class: 'presenter-where' }, `${active.run.tour.title} · escena ${index + 1} de ${of}`),
+      ...(step?.notes ? [h('span', { class: 'presenter-notes' }, step.notes)] : []),
+      h('span', { class: 'presenter-actions' }, ...buttons),
+      cost,
+    );
+    try {
+      const spend = await this.client?.presenterSpend();
+      if (spend && this.tour === active) cost.textContent = formatSpend(spend);
+    } catch {
+      cost.textContent = 'coste: no disponible';
+    }
+  }
+
+  private async presenterReset(active: ActiveTour): Promise<void> {
+    const bar = active.bar;
+    if (!bar || !this.client) return;
+    try {
+      const result = await this.client.presenterReset();
+      this.emit('vex-script', { id: active.run.tour.id, event: 'reset', ok: result.ok });
+      bar.querySelector('.presenter-cost')?.insertAdjacentText('beforebegin', result.ok ? ' · demo reiniciada' : ` · reinicio fallido${result.error ? `: ${result.error}` : ''}`);
+    } catch (err) {
+      this.emit('vex-error', { message: `Reinicio: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  private onTourEvent(event: TourEvent<WalkStep>): void {
     const active = this.tour;
     if (!active) return;
+    const name = active.kind === 'tour' ? 'vex-tour' : 'vex-script';
     if (event.type === 'step') {
       this.showTourStep(active, event.step, event.index, event.of);
-      this.emit('vex-tour', { id: active.run.tour.id, event: 'step', index: event.index, target: event.step.target ?? null });
+      this.emit(name, { id: active.run.tour.id, event: 'step', index: event.index, target: event.step.target ?? null });
+      if (active.bar) void this.renderPresenterBar(active);
       return;
     }
     void this.finishTour(active, event.completed, event.skipped);
   }
 
-  private showTourStep(active: ActiveTour, step: TourStep, index: number, of: number): void {
+  private showTourStep(active: ActiveTour, step: WalkStep, index: number, of: number): void {
     // Listeners of the previous target go; the window ones (first entry) stay.
     for (const undo of active.undo.splice(1)) undo();
     const target = step.target !== undefined ? (this.registry.get(step.target) ?? null) : null;
@@ -459,13 +574,15 @@ export class VexAssistantElement extends HTMLElement {
     next.addEventListener('click', () => active.run.next());
     const skip = h('button', { type: 'button', class: 'btn' }, 'Saltar');
     skip.addEventListener('click', () => active.run.skip());
-    const buttons = step.advanceOn === 'next' ? [next, skip] : [skip];
-    const hint = step.advanceOn === 'click' ? 'Pulsa el elemento señalado para seguir.' : step.advanceOn === 'input' ? 'Escribe en el elemento señalado para seguir.' : null;
+    const advanceOn = step.advanceOn ?? 'next';
+    // A scene's bubble is for the audience: the presenter drives from the strip and the keyboard.
+    const buttons = active.kind === 'script' ? [] : advanceOn === 'next' ? [next, skip] : [skip];
+    const hint = advanceOn === 'click' ? 'Pulsa el elemento señalado para seguir.' : advanceOn === 'input' ? 'Escribe en el elemento señalado para seguir.' : null;
     active.bubble.replaceChildren(
       h('span', { class: 'tour-count' }, `${active.run.tour.title} · ${index + 1} de ${of}`),
       h('p', {}, step.say),
       ...(hint ? [h('p', { class: 'muted' }, hint)] : []),
-      h('div', { class: 'tour-actions' }, ...buttons),
+      ...(buttons.length ? [h('div', { class: 'tour-actions' }, ...buttons)] : []),
     );
     active.highlight.hidden = !target;
     this.placeTour();
@@ -534,6 +651,12 @@ export class VexAssistantElement extends HTMLElement {
     const held = this.heldState ?? this.director?.state ?? 'idle';
     this.heldState = null;
     this.setAvatarState(held);
+    if (active.kind === 'script') {
+      // A rehearsal leaves no trace on the server: the script can be run again and again.
+      if (completed) this.director?.celebrate();
+      this.emit('vex-script', { id: active.run.tour.id, event: completed ? 'done' : 'left', skipped });
+      return;
+    }
     const tour = this.tourList.find((t) => t.id === active.run.tour.id);
     if (completed) {
       this.director?.celebrate();

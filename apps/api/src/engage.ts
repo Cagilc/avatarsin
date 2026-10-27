@@ -1,5 +1,5 @@
 import { liveTools, type ConnectorManifest } from '@vex/connectors';
-import { MAX_QUICK_ACTIONS, announcementSchema, applicable, engageIdSchema, type Announcement, type HostManifest, type Principal, type QuickAction, type Tour } from '@vex/operator';
+import { MAX_QUICK_ACTIONS, announcementSchema, applicable, engageIdSchema, type Announcement, type DemoScript, type HostManifest, type Principal, type QuickAction, type Tour } from '@vex/operator';
 import type { OperatorStore, StoredAnnouncement } from './storage.ts';
 
 /**
@@ -40,6 +40,21 @@ export class Engage {
 
   get toursOn(): boolean {
     return this.manifest?.features.tours === true;
+  }
+
+  get presenterOn(): boolean {
+    return this.manifest?.features.presenter === true;
+  }
+
+  /** The demo scripts this presenter may run (their role, or any). */
+  scriptsFor(principal: Principal): DemoScript[] {
+    if (!this.presenterOn) return [];
+    return applicable(this.manifest?.scripts ?? [], { role: principal.role, nowMs: this.now() });
+  }
+
+  /** The host's reset hook, only when the presenter is on and the manifest names one. */
+  get resetHook(): { url: string; secretEnv?: string | undefined } | null {
+    return this.presenterOn && this.manifest?.presenter?.reset ? this.manifest.presenter.reset : null;
   }
 
   /** The tours this person may take, with whether they completed each. */

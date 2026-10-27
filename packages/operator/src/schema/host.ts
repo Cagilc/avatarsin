@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { riskSchema, type Driver, type Risk } from './action.ts';
 import { announcementSchema, quickActionSchema } from './engage.ts';
 import { decide, type PermissionPolicy, permissionPolicySchema } from './policy.ts';
+import { presenterSchema, scriptSchema } from './script.ts';
 import { tourSchema } from './tour.ts';
 
 /**
@@ -104,6 +105,8 @@ export const hostFeaturesSchema = z.strictObject({
   domDriver: z.boolean().default(false),
   /** A pending confirmation is also sent out through `approvals.channels`, to be resolved from there. */
   channelApprovals: z.boolean().default(false),
+  /** Demo scripts and the presenter bar (`scripts`, `presenter`). */
+  presenter: z.boolean().default(false),
 });
 export type HostFeatures = z.infer<typeof hostFeaturesSchema>;
 
@@ -158,6 +161,9 @@ export const hostManifestSchema = z
     announcements: z.array(announcementSchema).max(50).default([]).refine(uniqueIds, 'ids de anuncio repetidos'),
     /** Shown only with `features.quickActions`; a tool button runs through policy and confirmation. */
     quickActions: z.array(quickActionSchema).max(12).default([]).refine(uniqueIds, 'ids de botón repetidos'),
+    /** Demo scripts for presenters, only with `features.presenter`; a scene's action is one of `quickActions`. */
+    scripts: z.array(scriptSchema).max(20).default([]).refine(uniqueIds, 'ids de guion repetidos'),
+    presenter: presenterSchema.optional(),
   })
   .refine(
     (m) =>
@@ -166,7 +172,11 @@ export const hostManifestSchema = z
         return cta?.kind !== 'quickAction' || m.quickActions.some((q) => q.id === cta.id);
       }),
     { message: 'un anuncio apunta a un botón que no existe', path: ['announcements'] },
-  );
+  )
+  .refine((m) => m.scripts.every((s) => s.scenes.every((sc) => sc.action === undefined || m.quickActions.some((q) => q.id === sc.action))), {
+    message: 'una escena apunta a un botón que no existe',
+    path: ['scripts'],
+  });
 export type HostManifest = z.infer<typeof hostManifestSchema>;
 export type HostManifestInput = z.input<typeof hostManifestSchema>;
 

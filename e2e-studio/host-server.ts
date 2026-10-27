@@ -31,7 +31,7 @@ const avatarPage = `<!doctype html>
 </body></html>`;
 
 /** A plain page with no framework: the script Vex Core serves and the tag. The demo login stands in for the host's token function. */
-const assistantPage = (api: string) => `<!doctype html>
+const assistantPage = (api: string, presenter: boolean) => `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Página simple con Vex</title>
 <script type="module" src="${api}/assistant.js"></script>
 </head>
@@ -42,7 +42,7 @@ const assistantPage = (api: string) => `<!doctype html>
   <label>Contraseña <input type="password" data-vex-id="clave" value="no-se-lee"></label>
   <p id="status">cargando</p>
 </main>
-<vex-assistant id="vex" api="${api}" demo-user="u-cesar"></vex-assistant>
+<vex-assistant id="vex" api="${api}" demo-user="u-cesar"${presenter ? ' presenter' : ''}></vex-assistant>
 <script>
   const el = document.getElementById('vex');
   const status = document.getElementById('status');
@@ -52,12 +52,25 @@ const assistantPage = (api: string) => `<!doctype html>
 </script>
 </body></html>`;
 
+/** The host's demo-reset hook: remembers the last call (body and headers) so a test can check the signature. */
+let lastReset: { body: string; headers: Record<string, string | string[] | undefined> } | null = null;
+
 for (const port of process.argv.slice(2).map(Number)) {
   createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
     if (url.pathname === '/health') return void res.end('ok');
+    if (url.pathname === '/reset' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        lastReset = { body, headers: req.headers };
+        res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+      });
+      return;
+    }
+    if (url.pathname === '/reset/last') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(lastReset));
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    if (url.pathname === '/asistente') return void res.end(assistantPage(url.searchParams.get('api') ?? 'http://127.0.0.1:8787'));
+    if (url.pathname === '/asistente') return void res.end(assistantPage(url.searchParams.get('api') ?? 'http://127.0.0.1:8787', url.searchParams.get('presenter') === '1'));
     res.end(avatarPage);
   }).listen(port);
 }

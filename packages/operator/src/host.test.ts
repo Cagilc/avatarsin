@@ -9,7 +9,7 @@ describe('host manifest', () => {
     const m = hostManifestSchema.parse(MINIMAL);
     expect(m.connectors).toEqual([]);
     expect(m.screenContext).toEqual({});
-    expect(m.features).toEqual({ tours: false, announcements: false, quickActions: false, domDriver: false, channelApprovals: false });
+    expect(m.features).toEqual({ tours: false, announcements: false, quickActions: false, domDriver: false, channelApprovals: false, presenter: false });
     expect(m.policy).toBeUndefined();
     expect(m.avatar).toBeUndefined();
   });

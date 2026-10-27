@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from 'zod';
 import { authSchema, importFilterSchema, verifySchema } from '@vex/connectors';
 import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, riskSchema, runOperator, type AnyTool, type ChatMessage, type HostManifest, type ModelProvider, type OperatorEvent, type PermissionPolicy, type Principal, type VexPersonality } from '@vex/operator';
-import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage } from './approvals.ts';
+import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage, signature } from './approvals.ts';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { caseFromSession } from './cases.ts';
 import { OutboundBlockedError, checkOutboundUrl, guardedFetch, originAllowed, type UrlPolicy } from './guard.ts';
@@ -506,6 +506,50 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (!principal) return undefined;
     if (!engage.markTourDone(principal, (req.params as { id: string }).id)) return reply.code(404).send({ error: 'No hay ningún tour con ese id para ti.' });
     return { ok: true };
+  });
+
+  // --- Presenter: demo scripts, the cost so far, and the host's reset hook (administrators only). ---
+  app.get('/engage/scripts', async (req, reply) => {
+    const principal = await principalOf(req, reply);
+    if (!principal) return undefined;
+    return engage.scriptsFor(principal);
+  });
+
+  app.get('/engage/presenter/spend', async (req, reply) => {
+    const principal = await principalOf(req, reply);
+    if (!principal) return undefined;
+    const s = meter.status(principal);
+    return { today: { tokens: s.userDay.tokens, cap: s.userDay.limit }, month: { usd: s.month.usd, cap: s.month.limit } };
+  });
+
+  // Puts the demo data back: a POST to the URL the manifest names, through the outbound guard,
+  // signed with the secret it names (never one written in it). Audited like any admin action.
+  app.post('/engage/presenter/reset', async (req, reply) => {
+    const principal = await adminOf(req, reply);
+    if (!principal) return undefined;
+    const hook = engage.resetHook;
+    if (!hook) return reply.code(404).send({ error: 'Este host no tiene reinicio de demo.' });
+    const refused = checkOutboundUrl(hook.url, urlPolicy);
+    if (refused) return reply.code(400).send({ error: refused });
+    const secret = hook.secretEnv ? (opts.connectors?.env ?? process.env)[hook.secretEnv] : undefined;
+    if (hook.secretEnv && !secret) return reply.code(500).send({ error: `Falta ${hook.secretEnv} en el entorno.` });
+    const body = JSON.stringify({ type: 'presenter_reset', host: host.name, principal: { id: principal.id, name: principal.name }, at: new Date((opts.now ?? Date.now)()).toISOString() });
+    let outcome: 'ok' | 'error' = 'ok';
+    let status = 0;
+    let error: string | undefined;
+    try {
+      const res = await outboundFetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-vex-event': 'presenter_reset', ...(secret ? { 'x-vex-signature': signature(secret, body) } : {}) }, body, signal: AbortSignal.timeout(10_000) });
+      status = res.status;
+      if (!res.ok) {
+        outcome = 'error';
+        error = `HTTP ${res.status}`;
+      }
+    } catch (err) {
+      outcome = 'error';
+      error = err instanceof Error ? err.message : String(err);
+    }
+    store.recordAudit({ ts: new Date().toISOString(), sessionId: 'admin', principal, actionId: crypto.randomUUID(), tool: 'reiniciar_demo', driver: 'platform', risk: 'write', params: { url: hook.url }, summary: 'Reiniciar los datos de la demo', outcome, ...(error ? { error } : {}), durationMs: 0 });
+    return outcome === 'ok' ? { ok: true, status } : reply.code(502).send({ ok: false, status, error });
   });
 
   app.get('/engage/quick-actions', async (req, reply) => {

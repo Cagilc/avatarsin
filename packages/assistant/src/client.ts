@@ -1,4 +1,4 @@
-import type { Announcement, OperatorEvent, Principal, QuickAction, Tour, VexPersonality } from '@vex/operator';
+import type { DemoScript, Announcement, OperatorEvent, Principal, QuickAction, Tour, VexPersonality } from '@vex/operator';
 
 /** What GET /operator/info says, as far as the panel needs it. */
 export interface OperatorInfo {
@@ -7,7 +7,7 @@ export interface OperatorInfo {
   host: {
     name: string;
     manifest: boolean;
-    features?: { tours: boolean; announcements: boolean; quickActions: boolean; domDriver: boolean };
+    features?: { tours: boolean; announcements: boolean; quickActions: boolean; domDriver: boolean; channelApprovals?: boolean; presenter?: boolean };
     /** The avatar published by the studio for this host, when the manifest names one. */
     avatar?: { endpoint: string; publicKey: string; keyId: string };
   };
@@ -18,6 +18,13 @@ export type VisibleAnnouncement = Announcement & { seen: boolean };
 export type VisibleTour = Tour & { done: boolean };
 
 export type StreamEvent = OperatorEvent | { type: 'session'; sessionId: string };
+
+export interface PresenterSpend {
+  /** Tokens this person spent today, and the cap (0 = none). */
+  today: { tokens: number; cap: number };
+  /** Estimated USD the installation spent this month, and the cap (0 = none). */
+  month: { usd: number; cap: number };
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -79,6 +86,21 @@ export class OperatorClient {
 
   async markTourDone(id: string): Promise<void> {
     await json(await fetch(`${this.api}/engage/tours/${encodeURIComponent(id)}/done`, { method: 'POST', headers: await this.headers(), body: '{}' }));
+  }
+
+  /** The demo scripts this presenter may run. Empty when the host has the presenter off. */
+  async scripts(): Promise<DemoScript[]> {
+    return json(await fetch(`${this.api}/engage/scripts`, { headers: await this.headers() }));
+  }
+
+  /** What the model has cost so far, as the spend meter counts it: this person's tokens today and the installation's month. */
+  async presenterSpend(): Promise<PresenterSpend> {
+    return json(await fetch(`${this.api}/engage/presenter/spend`, { headers: await this.headers() }));
+  }
+
+  /** Asks the host to put the demo data back (administrators only; the host decides what that means). */
+  async presenterReset(): Promise<{ ok: boolean; status?: number; error?: string }> {
+    return json(await fetch(`${this.api}/engage/presenter/reset`, { method: 'POST', headers: await this.headers(), body: '{}' }));
   }
 
   /** The quick-action buttons for this person. Empty when the host has them off. */

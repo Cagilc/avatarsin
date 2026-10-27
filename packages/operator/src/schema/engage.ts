@@ -9,7 +9,7 @@ import { toolNameSchema } from './action.ts';
  */
 
 export const engageIdSchema = z.string().regex(/^[a-z][a-z0-9-]{1,39}$/, 'id: minúsculas, dígitos y guiones, empieza por letra');
-const rolesSchema = z.array(z.string().min(1).max(40)).min(1).max(20);
+export const rolesSchema = z.array(z.string().min(1).max(40)).min(1).max(20);
 const whenSchema = z.string().datetime();
 
 /** What an announcement offers to do next. */

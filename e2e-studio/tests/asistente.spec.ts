@@ -96,8 +96,22 @@ test.beforeAll(async () => {
     host: { name: 'Demo Negocio', domain: 'localhost' },
     avatar: { endpoint: `${STUDIO}/v1/embed/${key.id}`, publicKey: signing.publicKey, keyId: signing.keyId },
     screenContext: { pantalla: { description: 'Vista abierta.' }, contactoId: { description: 'Id del contacto abierto.' }, contactoEmail: { description: 'Correo del contacto abierto.' }, expedienteId: { description: 'Expediente abierto.' } },
-    features: { announcements: true, quickActions: true, tours: true },
+    features: { announcements: true, quickActions: true, tours: true, presenter: true },
     tours: [{ id: 'paseo', title: 'Un paseo', steps: [{ target: 'titulo', say: 'Este es el título de la página.' }, { target: 'no-existe', say: 'Esto no está.' }, { say: 'Y eso es todo.', pose: 'celebrate' }] }],
+    presenter: { reset: { url: `${SITE}/reset`, secretEnv: 'DEMO_RESET_SECRET' } },
+    scripts: [
+      {
+        id: 'demo',
+        title: 'Demo para un cliente',
+        scenes: [
+          { target: 'titulo', say: 'Esta es la plataforma del cliente.', pose: 'point', notes: 'Saludar y presentar a Pixel.' },
+          { say: 'Pixel busca a una persona con sus propias palabras.', action: 'buscar-laura', notes: 'Enter lanza la búsqueda.' },
+          { target: 'no-existe', say: 'Esto no se ve en esta página.' },
+          { say: 'Cada acción queda en la auditoría con quién y cuándo.', pose: 'attention' },
+          { say: '¡Y eso es Pixel!', pose: 'celebrate' },
+        ],
+      },
+    ],
     quickActions: [
       { id: 'buscar-laura', label: 'Buscar a Laura', icon: '🔎', tool: 'buscar', params: { consulta: 'Laura Pérez', tipo: 'contactos' } },
       { id: 'quien-es-marco', label: '¿Quién es Marco?', prompt: '¿Quién es Marco Rossi?' },
@@ -111,7 +125,7 @@ test.beforeAll(async () => {
   const log = openSync(join(dir, 'vex-core.log'), 'a');
   core = spawn(process.execPath, ['src/server.ts'], {
     cwd: apiDir,
-    env: { ...process.env, PORT: String(PORTS.core), HOST: '127.0.0.1', VEX_DB: 'memory', VEX_PROVIDER: 'scripted', VEX_DEMO_LOGIN: '1', VEX_RATE_LIMIT: '200', CORS_ORIGIN: `${DEMO},${SITE}`, VEX_HOST_MANIFEST: file },
+    env: { ...process.env, PORT: String(PORTS.core), HOST: '127.0.0.1', VEX_DB: 'memory', VEX_PROVIDER: 'scripted', VEX_DEMO_LOGIN: '1', VEX_RATE_LIMIT: '200', CORS_ORIGIN: `${DEMO},${SITE}`, VEX_HOST_MANIFEST: file, DEMO_RESET_SECRET: 'secreto-de-la-demo' },
     stdio: ['ignore', log, log],
   });
   closeSync(log);
@@ -231,4 +245,61 @@ test('el tour: la mascota sale del panel, señala el título, salta lo que no es
   await page.keyboard.press('Escape');
   await expect(assistant.locator('.tour-bubble')).toHaveCount(0);
   await expect(assistant.locator('.avatar vex-avatar')).toHaveCount(1);
+});
+
+test('el modo presentador: cinco escenas con el teclado, una acción sin modelo, el coste y el reinicio firmado', async ({ page }) => {
+  await page.goto(`${SITE}/asistente?api=${encodeURIComponent(CORE)}&presenter=1`);
+  await expect(page.locator('#status')).toHaveText('listo:Pixel avatar:Pixel');
+  const assistant = page.locator('vex-assistant');
+  await page.evaluate(() => {
+    const w = window as Window & { __script?: string[] };
+    w.__script = [];
+    document.getElementById('vex')!.addEventListener('vex-script', (e) => {
+      const d = (e as CustomEvent<{ event: string; index?: number; action?: string }>).detail;
+      w.__script!.push(`${d.event}${d.index ?? ''}${d.action ? `:${d.action}` : ''}`);
+    });
+  });
+  await assistant.evaluate((el) => (el as HTMLElement & { startScript(id: string): Promise<void> }).startScript('demo'));
+
+  // Scene 1 points at the title; the strip shows where we are and the presenter's notes, the bubble does not.
+  const bar = assistant.locator('.presenter-bar');
+  await expect(bar).toContainText('Demo para un cliente · escena 1 de 5');
+  await expect(bar).toContainText('Saludar y presentar a Pixel.');
+  await expect(assistant.locator('.tour-bubble')).toContainText('Esta es la plataforma del cliente.');
+  await expect(assistant.locator('.tour-bubble')).not.toContainText('Saludar');
+  await expect(assistant.locator('.tour-highlight')).toBeVisible();
+  await expect(bar).toContainText('coste: 0 tokens hoy');
+  await test.info().attach('presentador-escena-1', { body: await page.screenshot(), contentType: 'image/png' });
+
+  // → scene 2, Enter fires its quick action through the loop (scripted: no model, no cost).
+  await page.keyboard.press('ArrowRight');
+  await expect(bar).toContainText('escena 2 de 5');
+  await page.keyboard.press('Enter');
+  await expect(assistant.locator('.step.is-ok')).toHaveCount(1);
+  await expect(assistant.locator('.msg.user')).toContainText('Botón: Buscar a Laura');
+  await expect(bar).toContainText('coste: 0 tokens hoy');
+
+  // → skips the scene whose target is not here, ← comes back, → → to the end.
+  await page.keyboard.press('ArrowRight');
+  await expect(bar).toContainText('escena 4 de 5');
+  await page.keyboard.press('ArrowLeft');
+  await expect(bar).toContainText('escena 2 de 5');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(bar).toContainText('escena 5 de 5');
+
+  // The reset hook: signed with the secret the manifest names, through the guard; only an administrator may call it.
+  await bar.locator('[data-action="reset"]').click();
+  await expect(bar).toContainText('demo reiniciada');
+  const last = (await (await fetch(`${SITE}/reset/last`)).json()) as { body: string; headers: Record<string, string> };
+  expect(JSON.parse(last.body)).toMatchObject({ type: 'presenter_reset', host: 'Demo Negocio', principal: { id: 'u-cesar' } });
+  const { createHmac } = await import('node:crypto');
+  expect(last.headers['x-vex-signature']).toBe(`sha256=${createHmac('sha256', 'secreto-de-la-demo').update(last.body).digest('hex')}`);
+  expect(last.headers['x-vex-event']).toBe('presenter_reset');
+  const ana = ((await (await fetch(`${CORE}/platform/auth/demo`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: 'u-ana' }) })).json()) as { token: string }).token;
+  expect((await fetch(`${CORE}/engage/presenter/reset`, { method: 'POST', headers: { authorization: `Bearer ${ana}`, 'content-type': 'application/json' }, body: '{}' })).status).toBe(403);
+
+  await page.keyboard.press('ArrowRight');
+  await expect(assistant.locator('.presenter-bar')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as Window & { __script?: string[] }).__script)).toEqual(['start', 'step0', 'step1', 'action1:buscar-laura', 'step3', 'step1', 'step3', 'step4', 'reset', 'done']);
 });

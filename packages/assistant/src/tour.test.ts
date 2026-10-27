@@ -65,3 +65,23 @@ describe('the tour engine', () => {
     expect(events).toHaveLength(1);
   });
 });
+
+describe('the tour engine · a presenter rewinds', () => {
+  it('goes back to the previous step that is on the page, stays on the first one, and forward again', () => {
+    const { r, events } = run();
+    r.start();
+    r.next(); // 0 → 2 (1 is missing)
+    expect(r.index).toBe(2);
+    r.back();
+    expect(r.index).toBe(0);
+    r.back();
+    expect(r.index).toBe(0);
+    r.next();
+    expect(r.index).toBe(2);
+    expect(events.map((e) => (e.type === 'step' ? e.index : 'done'))).toEqual([0, 2, 0, 2]);
+    r.next();
+    expect(r.done).toBe(true);
+    // A missing target is listed once, however many times the walk passes it.
+    expect(events.at(-1)).toEqual({ type: 'done', completed: true, skipped: ['no-existe', 'tampoco'] });
+  });
+});

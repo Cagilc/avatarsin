@@ -65,6 +65,7 @@ Lo que una plataforma declara sobre sí misma para que Vex la opere, en un JSON 
 | `features` | Interruptores de los pasos siguientes (tours, anuncios, botones rápidos, driver DOM). Todos apagados; con todo apagado, las herramientas y la política son idénticas a las de un servidor sin manifiesto (hay un test que lo compara). |
 | `announcements`, `quickActions` | Novedades y accesos rápidos (paso 3, sección propia más abajo). |
 | `tours` | Recorridos guiados por la página con la mascota (paso 5, sección propia más abajo). |
+| `scripts`, `presenter` | Guiones de demo para un presentador y el gancho de reinicio del host, solo con `features.presenter` (sección propia más abajo). |
 
 Un manifiesto que no valida para el arranque con el fichero, el campo y el motivo (`VEX_HOST_MANIFEST: …/manifest.json: manifiesto del host no válido. host.name: …`).
 
@@ -142,6 +143,15 @@ Un recorrido guiado por la página, **sin modelo**: la mascota sale del panel, s
 - Fuera de este paso, anotado en el plan: logros y puntos, borradores de tour con IA (tras medir con Claude), y «pantalla cambia a mitad de tour» (hoy, el paso cuyo elemento desaparece se salta al llegar a él).
 
 **Vex en el formato del estudio.** El avatar dibujado a mano (`assets/vex-2d`) entra ahora en el estudio con «Probar con Vex, el operador»: `apps/studio/scripts/vex-sample.ts` aplana el rig anidado en 37 grupos (`public/samples/vex.svg`) y `packages/format/src/samples/vex.ts` les pone el esqueleto, los pivotes, las poses como clips de los 8 estados y las **caras y visemas**: cada variante de ojos y de boca es una pieza, y los clips las encienden con pistas de opacidad a saltos; `talk` turna los nueve visemas. No hizo falta cambiar el formato. `packages/vex` (React) sigue solo para el laboratorio `#estados`.
+
+## Modo presentador y guiones de demo (paso 8.5 del plan maestro)
+
+Una demo en directo con IA libre es frágil; un **guion** la hace repetible. En el manifiesto, `scripts[]`: escenas con `say`, `pose`, `target` (elemento registrado al que señalar) y, opcionalmente, `action` (el id de un botón rápido) y `notes` (para el presentador). Solo con `features.presenter`; por rol como los tours. Nada avanza solo y no hay modelo salvo que la acción de una escena sea un botón de *prompt*.
+
+- **`<vex-assistant presenter>`**: con el atributo, el panel pide los guiones (`GET /engage/scripts`) y expone `startScript(id)` y `scripts`. Un guion se dibuja sobre el mismo escenario que un tour (burbuja para el público, mascota que señala) más una **barra del presentador** abajo: guion y escena, las notas (nunca en la burbuja), botones y el **coste** del modelo tal como lo cuenta `spend.ts` (`GET /engage/presenter/spend`: tokens de la persona hoy y USD de la instalación este mes, con sus topes).
+- **Teclas**: `→` siguiente, `←` anterior (vuelve a la escena anterior que esté en la página), `Enter` lanza la acción de la escena por el mismo bucle que el botón (política, confirmación, auditoría), `Esc` sale. Las escenas cuyo `target` no está en la página se saltan, como en los tours. Un guion no deja rastro en el servidor: se ensaya las veces que haga falta.
+- **Reiniciar la demo**: `presenter.reset { url, secretEnv }` en el manifiesto. `POST /engage/presenter/reset` (solo `admin`, botón «Reiniciar demo» de la barra) manda al host un `POST` JSON `{ type: presenter_reset, host, principal, at }` por la guardia de salida, con `x-vex-event` y `x-vex-signature` (HMAC con el secreto que nombra `secretEnv`; sin él en el entorno, 500 antes que llamar sin firma). El host decide qué es «reiniciar». Queda en la auditoría como `reiniciar_demo`.
+- **Eventos** `vex-script`: `start`, `step` (con `index` y `target`), `action`, `reset`, `done` o `left`.
 
 ## Probar el avatar a mano
 

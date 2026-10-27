@@ -49,4 +49,5 @@ export { RUNNER_DEFAULTS, runOperator, type RunOptions, type RunResult } from '.
 export { ScriptedProvider, missingInfo, planFor } from './providers/scripted.ts';
 export { DirectProvider, type DirectCall } from './providers/direct.ts';
 export { TOUR_POSES, elementIdSchema, tourSchema, tourStepSchema, type Tour, type TourInput, type TourStep } from './schema/tour.ts';
+export { presenterSchema, sceneSchema, scriptSchema, type DemoScript, type DemoScriptInput, type Presenter, type Scene } from './schema/script.ts';
 export { MAX_QUICK_ACTIONS, announcementSchema, applicable, ctaSchema, engageIdSchema, quickActionSchema, type Announcement, type AnnouncementInput, type Audience, type Cta, type QuickAction } from './schema/engage.ts';

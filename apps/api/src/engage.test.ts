@@ -105,6 +105,55 @@ describe('announcements and quick actions in Vex Core', () => {
     expect((await post('/engage/tours/paseo/done', ana)).statusCode).toBe(404);
   });
 
+  it('presenter: scripts by role, the cost as the meter counts it, and a signed reset only for administrators', async () => {
+    const calls: Array<{ url: string; body: string; headers: Record<string, string> }> = [];
+    // The manifest's connector is imported through the same fetch: only the hook's calls count here.
+    const hook = { get length() { return this.all().length; }, all: () => calls.filter((c) => c.url.endsWith('/reset')), 0: undefined as unknown as { body: string; headers: Record<string, string> } };
+    Object.defineProperty(hook, 0, { get: () => hook.all()[0] });
+    const manifest = manifestWith(citasBase, {
+      features: { announcements: true, quickActions: true, tours: true, presenter: true },
+      presenter: { reset: { url: 'http://demo.example/reset', secretEnv: 'DEMO_RESET' } },
+      scripts: [
+        { id: 'demo', title: 'Demo', scenes: [{ target: 'titulo', say: 'Hola.' }, { say: 'Busca.', action: 'buscar-laura', notes: 'Enter.' }] },
+        { id: 'interna', title: 'Para administradores', roles: ['admin'], scenes: [{ say: 'Solo tú.' }] },
+      ],
+    });
+    await start({
+      manifest,
+      connectors: { env: { DEMO_RESET: 'clave-del-reinicio' }, mcpAllow: [], urlPolicy: LOCAL, fetch: async (url, init) => (calls.push({ url: String(url), body: String(init?.body), headers: Object.fromEntries(new Headers(init?.headers)) }), new Response(String(url).endsWith('/reset') ? '{"ok":true}' : '{}')) },
+    });
+    const ana = await login('u-ana');
+    const cesar = await login('u-cesar');
+    expect(((await get('/engage/scripts', ana)).json() as Array<{ id: string }>).map((s) => s.id)).toEqual(['demo']);
+    expect(((await get('/engage/scripts', cesar)).json() as Array<{ id: string; scenes: Array<{ pose: string }> }>).map((s) => s.id)).toEqual(['demo', 'interna']);
+    expect(((await get('/engage/scripts', cesar)).json() as Array<{ scenes: Array<{ pose: string; action?: string }> }>)[0]!.scenes[1]).toMatchObject({ pose: 'talk', action: 'buscar-laura' });
+    expect((await get('/engage/presenter/spend', ana)).json()).toEqual({ today: { tokens: 0, cap: 300_000 }, month: { usd: 0, cap: 50 } });
+
+    expect((await post('/engage/presenter/reset', ana)).statusCode).toBe(403);
+    const reset = await post('/engage/presenter/reset', cesar);
+    expect(reset.json()).toEqual({ ok: true, status: 200 });
+    expect(hook).toHaveLength(1);
+    expect(JSON.parse(hook[0]!.body)).toMatchObject({ type: 'presenter_reset', host: 'Demo', principal: { id: 'u-cesar', name: 'César Gil' } });
+    const { createHmac } = await import('node:crypto');
+    expect(hook[0]!.headers['x-vex-signature']).toBe(`sha256=${createHmac('sha256', 'clave-del-reinicio').update(hook[0]!.body).digest('hex')}`);
+    expect(hook[0]!.headers['x-vex-event']).toBe('presenter_reset');
+    expect(store.auditEntries.filter((e) => e.tool === 'reiniciar_demo').map((e) => [e.principal.id, e.outcome])).toEqual([['u-cesar', 'ok']]);
+
+    // A manifest that names no secret for the hook, with the feature on, is a server misconfiguration, not a silent unsigned call.
+    await app!.close();
+    await start({ manifest, connectors: { env: {}, mcpAllow: [], urlPolicy: LOCAL } });
+    const again = await login('u-cesar');
+    expect((await post('/engage/presenter/reset', again)).statusCode).toBe(500);
+  });
+
+  it('presenter off: no scripts and no reset, whatever the manifest declares', async () => {
+    await start({ manifest: manifestWith(citasBase, { presenter: { reset: { url: 'http://demo.example/reset' } }, scripts: [{ id: 'demo', title: 'Demo', scenes: [{ say: 'Hola.' }] }] }) });
+    const cesar = await login('u-cesar');
+    expect((await get('/engage/scripts', cesar)).json()).toEqual([]);
+    expect((await post('/engage/presenter/reset', cesar)).statusCode).toBe(404);
+    expect(() => manifestWith(citasBase, { features: { presenter: true }, scripts: [{ id: 'demo', title: 'Demo', scenes: [{ say: 'Hola.', action: 'no-existe' }] }] })).toThrow(/botón que no existe/);
+  });
+
   it('offers each person the tours of their role and remembers which they completed', async () => {
     await start({ manifest: manifestWith(citasBase) });
     const ana = await login('u-ana');

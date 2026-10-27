@@ -104,6 +104,12 @@ a.btn { text-decoration: none; display: inline-block; }
 .tour-count { font-size: 11px; color: var(--vex-text-muted); }
 .tour-actions { display: flex; gap: 8px; }
 .tour-stage.reduced * { transition: none !important; }
+.presenter-bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 14px; background: rgba(20, 24, 36, 0.96); color: #eef1f8; font: 12px/1.4 var(--vex-font); pointer-events: auto; border-top: 1px solid var(--vex-border-strong); }
+.presenter-where { font-weight: 600; }
+.presenter-notes { flex: 1 1 240px; color: #ffd87a; }
+.presenter-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.presenter-actions .btn { padding: 4px 10px; font-size: 12px; }
+.presenter-cost { margin-left: auto; color: #b8c2d9; }
 @media (prefers-reduced-motion: reduce) { .tour-highlight, .tour-mascot, .tour-bubble { transition: none; } }
 .composer { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px 16px 0; border-top: 1px solid var(--vex-border); margin: 0; }
 .composer textarea { resize: none; padding: 8px 10px; border: 1px solid var(--vex-border-strong); border-radius: var(--vex-radius); background: var(--vex-field); color: var(--vex-text); }
