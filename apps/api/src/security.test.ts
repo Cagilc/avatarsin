@@ -3,7 +3,7 @@ import { ScriptedProvider } from '@vex/operator';
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppOptions } from './app.ts';
 import { TokenService } from './auth.ts';
-import { checkOutboundUrl, isInternalHost, originAllowed } from './guard.ts';
+import { checkOutboundUrl, guardedFetch, isInternalHost, originAllowed } from './guard.ts';
 import { MockPlatform } from './platform/mock.ts';
 import { MemoryStore } from './storage.ts';
 
@@ -44,7 +44,8 @@ describe('outbound URL policy', () => {
     for (const h of ['localhost', '127.0.0.1', '127.9.9.9', '10.0.0.5', '192.168.1.20', '172.16.0.1', '172.31.255.1', '169.254.169.254', '0.0.0.0', '::1', 'fe80::1', 'fd00::1', 'api.localhost']) {
       expect(isInternalHost(h), h).toBe(true);
     }
-    for (const h of ['api.ejemplo.com', '8.8.8.8', '172.32.0.1', '2001:db8::1']) expect(isInternalHost(h), h).toBe(false);
+    // 2001:db8::/32 is the documentation range: not global unicast, so it counts as internal now.
+    for (const h of ['api.ejemplo.com', '8.8.8.8', '172.32.0.1', '2606:4700::1111']) expect(isInternalHost(h), h).toBe(false);
   });
 
   it('allows only https to public hosts by default', () => {
@@ -128,5 +129,62 @@ describe('Vex Core from a browser', () => {
     expect(res.json()).toMatchObject({ error: expect.stringContaining('https') });
     const meta = await app.inject({ method: 'POST', url: '/connectors/import/openapi', headers: { authorization: `Bearer ${token}` }, payload: { id: 'meta', url: 'https://169.254.169.254/latest/' } });
     expect(meta.json()).toMatchObject({ error: expect.stringContaining('esta máquina') });
+  });
+});
+
+describe('guarded outbound fetch', () => {
+  const strict = { allowHttp: false, allowInternal: false };
+  const ok = () => new Response('{}', { status: 200 });
+  const redirect = (to: string, status = 302) => new Response(null, { status, headers: { location: to } });
+  const pub = async () => ['93.184.216.34'];
+
+  it('refuses a public name that resolves to a private address', async () => {
+    const calls: string[] = [];
+    const f = guardedFetch({ policy: strict, resolve: async () => ['10.0.0.8'], fetch: async (u) => (calls.push(String(u)), ok()) });
+    await expect(f('https://api.ejemplo.com/spec.json')).rejects.toThrow(/resuelve/);
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses a name when any of its addresses is internal', async () => {
+    const f = guardedFetch({ policy: strict, resolve: async () => ['93.184.216.34', '169.254.169.254'], fetch: async () => ok() });
+    await expect(f('https://api.ejemplo.com/')).rejects.toThrow(/resuelve/);
+  });
+
+  it('checks every redirect hop, not only the first URL', async () => {
+    const calls: string[] = [];
+    const f = guardedFetch({
+      policy: strict,
+      resolve: pub,
+      fetch: async (u) => (calls.push(String(u)), calls.length === 1 ? redirect('https://169.254.169.254/latest/meta-data/') : ok()),
+    });
+    await expect(f('https://api.ejemplo.com/spec.json')).rejects.toThrow(/esta máquina/);
+    expect(calls).toEqual(['https://api.ejemplo.com/spec.json']);
+  });
+
+  it('follows a safe redirect and stops after too many', async () => {
+    let n = 0;
+    const f = guardedFetch({ policy: strict, resolve: pub, fetch: async () => (n++ === 0 ? redirect('/v2/spec.json') : ok()) });
+    expect((await f('https://api.ejemplo.com/spec.json')).status).toBe(200);
+    const loop = guardedFetch({ policy: strict, resolve: pub, fetch: async () => redirect('/again') });
+    await expect(loop('https://api.ejemplo.com/')).rejects.toThrow(/redirecciones/);
+  });
+
+  it('drops credentials when a redirect leaves the origin, keeps them on the same origin', async () => {
+    const seen: Array<string | null> = [];
+    const f = guardedFetch({
+      policy: strict,
+      resolve: pub,
+      fetch: async (_u, init) => {
+        seen.push(new Headers(init?.headers).get('x-api-key'));
+        return seen.length === 1 ? redirect('/same') : seen.length === 2 ? redirect('https://cdn.ejemplo.net/x') : ok();
+      },
+    });
+    await f('https://api.ejemplo.com/', { headers: { 'x-api-key': 'secreto', accept: 'application/json' } });
+    expect(seen).toEqual(['secreto', 'secreto', null]);
+  });
+
+  it('skips name resolution only when internal targets are allowed (development)', async () => {
+    const f = guardedFetch({ policy: { allowHttp: true, allowInternal: true }, resolve: async () => { throw new Error('no debe resolver'); }, fetch: async () => ok() });
+    expect((await f('http://localhost:8790/openapi.json')).status).toBe(200);
   });
 });

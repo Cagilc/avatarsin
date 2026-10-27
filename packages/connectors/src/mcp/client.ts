@@ -211,22 +211,31 @@ export class StdioMcpClient extends BaseClient {
   }
 }
 
+export interface HttpMcpOptions {
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  /** Used for every request; the host passes a guarded one so redirects and private addresses are refused. */
+  fetch?: typeof fetch;
+}
+
 /** A remote MCP server over Streamable HTTP: one POST per message, JSON or SSE in return. */
 export class HttpMcpClient extends BaseClient {
   private readonly url: string;
   private readonly headers: Record<string, string>;
   private readonly timeoutMs: number;
+  private readonly doFetch: typeof fetch;
   private sessionId: string | null = null;
   private nextId = 1;
 
-  private constructor(url: string, opts: { headers?: Record<string, string>; timeoutMs?: number }) {
+  private constructor(url: string, opts: HttpMcpOptions) {
     super();
     this.url = url;
     this.headers = opts.headers ?? {};
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.doFetch = opts.fetch ?? fetch;
   }
 
-  static async connect(url: string, opts: { headers?: Record<string, string>; timeoutMs?: number } = {}): Promise<HttpMcpClient> {
+  static async connect(url: string, opts: HttpMcpOptions = {}): Promise<HttpMcpClient> {
     const client = new HttpMcpClient(url, opts);
     await client.handshake();
     return client;
@@ -234,7 +243,7 @@ export class HttpMcpClient extends BaseClient {
 
   private async post(body: unknown, signal?: AbortSignal): Promise<Response> {
     const timeout = AbortSignal.timeout(this.timeoutMs);
-    return fetch(this.url, {
+    return this.doFetch(this.url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -284,7 +293,7 @@ export class HttpMcpClient extends BaseClient {
 
   async close(): Promise<void> {
     if (!this.sessionId) return;
-    await fetch(this.url, { method: 'DELETE', headers: { 'mcp-session-id': this.sessionId } }).catch(() => {});
+    await this.doFetch(this.url, { method: 'DELETE', headers: { 'mcp-session-id': this.sessionId } }).catch(() => {});
   }
 }
 

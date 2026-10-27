@@ -7,7 +7,7 @@ import { DirectProvider, ScriptedProvider, applicable, decide, permittedTools, r
 import { ApprovalNotifier, ApprovalTokens, approvalPage, resultPage } from './approvals.ts';
 import { DEMO_USERS, TokenService, bearer } from './auth.ts';
 import { caseFromSession } from './cases.ts';
-import { checkOutboundUrl, originAllowed, type UrlPolicy } from './guard.ts';
+import { OutboundBlockedError, checkOutboundUrl, guardedFetch, originAllowed, type UrlPolicy } from './guard.ts';
 import { ConnectorError, ConnectorRegistry } from './connectors.ts';
 import { Engage } from './engage.ts';
 import { GrantClient, type GrantState } from './grant.ts';
@@ -77,6 +77,8 @@ export interface AppOptions {
     /** Which URLs an administrator may import from. Default: https only, no private networks. */
     urlPolicy?: UrlPolicy;
     fetch?: typeof fetch;
+    /** Hostname resolver for the outbound guard. Default: the system resolver. */
+    resolve?: (hostname: string) => Promise<string[]>;
   };
   logger?: boolean;
 }
@@ -156,18 +158,22 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const policy = opts.policy ?? manifest?.policy ?? OPERATOR_POLICY;
   const personality = opts.personality ?? DEFAULT_PERSONALITY;
   const host = manifest ? { name: manifest.host.name, screenContext: manifest.screenContext } : { name: opts.hostName ?? DEFAULT_HOST_NAME };
-  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
   const platform: AnyTool[] = platformTools(opts.platform);
+  const urlPolicy: UrlPolicy = opts.connectors?.urlPolicy ?? { allowHttp: false, allowInternal: false };
+  // Every request this server makes on behalf of an administrator's input (imports, imported APIs,
+  // remote MCP, the studio's grant, approval webhooks) goes through the same guard: names are
+  // resolved and pinned, redirects re-checked, credentials dropped when a hop leaves the origin.
+  const outboundFetch = guardedFetch({ policy: urlPolicy, ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}), ...(opts.connectors?.resolve ? { resolve: opts.connectors.resolve } : {}) });
   const registry = new ConnectorRegistry({
     store,
     env: opts.connectors?.env ?? process.env,
     mcpAllow: opts.connectors?.mcpAllow ?? [],
     checkUrl: (url) => checkOutboundUrl(url, urlPolicy),
-    ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}),
+    fetch: outboundFetch,
   });
   const guide = registry.guideTool();
   // The studio's grant, only for a host whose manifest names its avatar integration.
-  const grants = manifest?.avatar ? new GrantClient({ avatar: manifest.avatar, domain: manifest.host.domain, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), ...opts.grant }) : null;
+  const grants = manifest?.avatar ? new GrantClient({ avatar: manifest.avatar, domain: manifest.host.domain, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), fetch: outboundFetch, ...opts.grant }) : null;
   const grantState = async (): Promise<GrantState | null> => (grants ? grants.current() : null);
   /**
    * What the model sees, recomputed per message: platform tools and reviewed connectors, narrowed by
@@ -209,7 +215,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const approvalTokens = new ApprovalTokens(opts.approvalSecret, opts.now);
   const notifier =
     manifest?.features.channelApprovals && manifest.approvals
-      ? new ApprovalNotifier({ channels: manifest.approvals.channels, env: opts.connectors?.env ?? process.env, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), ...(opts.connectors?.fetch ? { fetch: opts.connectors.fetch } : {}), log: (line) => app.log.info(line) })
+      ? new ApprovalNotifier({ channels: manifest.approvals.channels, env: opts.connectors?.env ?? process.env, checkUrl: (url) => checkOutboundUrl(url, urlPolicy), fetch: outboundFetch, log: (line) => app.log.info(line) })
       : null;
   const fallback = opts.fallbackProvider ?? new ScriptedProvider();
   const pauseMode = (): PauseMode => {
@@ -580,6 +586,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   };
   const fail = (reply: FastifyReply, err: unknown) => {
     if (err instanceof ConnectorError) return reply.code(err.status).send({ error: err.message });
+    if (err instanceof OutboundBlockedError) return reply.code(400).send({ error: err.message });
     if (err instanceof z.ZodError) return reply.code(400).send({ error: err.issues.map((i) => i.message).join('; ') });
     return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
   };

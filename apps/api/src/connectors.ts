@@ -163,7 +163,7 @@ export class ConnectorRegistry {
     if (source.kind === 'mcp-http') {
       const reason = this.opts.checkUrl?.(source.url);
       if (reason) throw new ConnectorError(400, reason);
-      return HttpMcpClient.connect(source.url);
+      return HttpMcpClient.connect(source.url, this.opts.fetch ? { fetch: this.opts.fetch } : {});
     }
     throw new ConnectorError(400, 'Este conector no es MCP.');
   }
