@@ -1,6 +1,6 @@
 # Borrador · respuesta a Oscar en la PR #4 (`docs/propuesta-lote-1`)
 
-> **Sin publicar.** Tipo: comentario (la PR queda abierta como documento de propuestas, como la #3). César decide si se publica y cuándo. Fuente: `docs/plan-maestro.md`, paso 9.
+> **Publicada el 2026-10-27** como comentario en https://github.com/Cagilc/avatarsin/pull/4. La PR queda abierta como documento de propuestas.
 
 ---
 
